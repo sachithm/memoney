@@ -1,0 +1,146 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Connection {
+  id               String            @id @default(cuid())
+  providerId       String
+  linkUri          String?
+  connectionId     String?
+  status           ConnectionStatus  @default(PENDING)
+  lastAuthorizedAt DateTime?
+  scopes           String
+  source           ConnectionSource  @default(TRUELAYER)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  accounts         Account[]
+  refreshLogs      RefreshLog[]
+}
+
+model Account {
+  id               String        @id @default(cuid())
+  connectionId     String
+  connection       Connection    @relation(fields: [connectionId], references: [id])
+  type             AccountType
+  name             String
+  currency         String
+  iban             String?
+  sortCode         String?
+  accountNumber    String?
+  balance          Float?
+  availableBalance Float?
+  lastUpdated      DateTime      @default(now())
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  transactions     Transaction[]
+
+  @@index([connectionId])
+}
+
+model Transaction {
+  id            String   @id @default(cuid())
+  accountId     String
+  account       Account  @relation(fields: [accountId], references: [id])
+  bookedAt      DateTime
+  description   String
+  amount        Float
+  currency      String
+  category      String?
+  merchantName  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([accountId])
+}
+
+model RefreshLog {
+  id            String     @id @default(cuid())
+  connectionId    String
+  connection      Connection @relation(fields: [connectionId], references: [id])
+  lastFetchAt   DateTime
+  status        String
+  message       String?
+  createdAt     DateTime   @default(now())
+
+  @@index([connectionId])
+}
+
+enum ConnectionStatus {
+  PENDING
+  AUTHORIZED
+  FAILED
+  DELETED
+}
+
+enum ConnectionSource {
+  TRUELAYER
+  SALTEDGE
+}
+
+enum AccountType {
+  ACCOUNT
+  CARD
+}
+
+// ─── Manual Data Models (Phase 1.9) ─────────────────────────
+// For manual balance entry, income/expense tracking, and net worth
+// graphing. Soft-delete via `deletedAt` so data is never lost.
+
+model BalanceSource {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model BalanceEntry {
+  id        String    @id @default(cuid())
+  date      DateTime
+  amount    Float
+  currency  String    @default("GBP")
+  source    String // e.g. "Cash", "HSBC Checking", "HSBC Credit Card"
+  isLiability Boolean @default(false) // true for credit card / loan balances
+  deletedAt DateTime? // soft delete
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([date])
+  @@index([source])
+  @@index([deletedAt])
+}
+
+model IncomeEntry {
+  id          String    @id @default(cuid())
+  date        DateTime
+  amount      Float
+  description String
+  category    String    @default("Other") // e.g. "Salary", "Bonus", "Dividend"
+  deletedAt   DateTime? // soft delete
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([date])
+  @@index([category])
+  @@index([deletedAt])
+}
+
+model ExpenseEntry {
+  id          String    @id @default(cuid())
+  date        DateTime
+  amount      Float
+  description String
+  category    String    @default("Other") // e.g. "Food", "Travel", "Shopping"
+  card        String? // e.g. "Amex", "Monzo Credit"
+  deletedAt   DateTime? // soft delete
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([date])
+  @@index([category])
+  @@index([deletedAt])
+}

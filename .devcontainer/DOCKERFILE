@@ -1,0 +1,27 @@
+FROM mcr.microsoft.com/devcontainers/javascript-node:22
+
+USER root
+
+# Install Java (needed for Android builds)
+RUN apt-get update && apt-get install -y \
+    # openjdk-17-jdk \
+    git \
+    unzip \
+    curl \
+    wget \
+    && apt-get clean
+
+# Install Expo CLI and EAS CLI
+RUN npm install -g \
+    expo \
+    eas-cli
+
+# Android SDK (optional)
+# ENV ANDROID_HOME=/opt/android-sdk
+# ENV ANDROID_SDK_ROOT=/opt/android-sdk
+
+# RUN mkdir -p ${ANDROID_HOME}/cmdline-tools
+
+USER node
+
+WORKDIR /workspace

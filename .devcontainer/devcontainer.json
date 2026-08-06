@@ -1,0 +1,31 @@
+{
+  "name": "memoney",
+  "build": {
+    "dockerfile": "DOCKERFILE"
+  },
+  "forwardPorts": [
+    8081,
+    19000,
+    19001,
+    19002
+  ],
+  "postCreateCommand": "npm install && npx prisma generate",
+//   "customizations": {
+//     "vscode": {
+//       "extensions": [
+//         "dbaeumer.vscode-eslint",
+//         "esbenp.prettier-vscode",
+//         "ms-vscode.vscode-typescript-next",
+//         "eamodio.gitlens"
+//       ]
+//     }
+//   },
+  "remoteUser": "node",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "poolside-ai.acp-assistant"
+      ]
+    }
+  }
+}
