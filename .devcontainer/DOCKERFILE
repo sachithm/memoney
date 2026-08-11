@@ -16,6 +16,8 @@ RUN npm install -g \
     expo \
     eas-cli
 
+# RUN curl -fsSL https://downloads.poolside.ai/pool/install.sh | sh
+
 # Android SDK (optional)
 # ENV ANDROID_HOME=/opt/android-sdk
 # ENV ANDROID_SDK_ROOT=/opt/android-sdk

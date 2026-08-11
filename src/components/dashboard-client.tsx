@@ -1,78 +1,45 @@
 "use client";
 
-import { useState } from "react";
-import { Trading212DashboardData } from "@/lib/trading212";
+import { useCallback, useMemo, useState } from "react";
+import Link from "next/link";
 import NetWorthChart from "@/components/networth-chart";
 import BalanceForm from "@/components/balance-form";
 import IncomeForm from "@/components/income-form";
 import ExpenseForm from "@/components/expense-form";
-import { formatCurrency } from "@/lib/utils";
-
-interface Connection {
-  id: string;
-  providerId: string;
-  connectionId: string | null;
-  status: string;
-  lastAuthorizedAt: string | null;
-  scopes: string;
-  source: string;
-  createdAt: string;
-}
-
-interface Account {
-  id: string;
-  connectionId: string;
-  type: "ACCOUNT" | "CARD";
-  name: string;
-  currency: string;
-  iban?: string | null;
-  sortCode?: string | null;
-  balance?: number | null;
-  availableBalance?: number | null;
-  lastUpdated: string;
-}
+import { formatCurrency, formatDate } from "@/lib/utils";
+import { ManualData, type DashboardInitialData } from "@/lib/types";
 
 interface DashboardProps {
-  initialData: {
-    connections: Connection[];
-    accounts: Account[];
-    trading212: Trading212DashboardData;
-    manual: {
-      timeSeries: { date: string; netWorth: number }[];
-      income: {
-        total: number;
-        byCategory: { category: string; total: number }[];
-      };
-      expenses: {
-        total: number;
-        byCategory: { category: string; total: number }[];
-      };
-      trading212: {
-        totalValue: number;
-        cash: number;
-        investments: number;
-      } | null;
-      bankAccounts: { name: string; balance: number; currency: string; source: string }[];
-      summary: {
-        netWorth: number;
-        totalAssets: number;
-        totalLiabilities: number;
-        income: { total: number; savingsRate: number };
-        expenses: { total: number };
-        monthlySavings: number;
-      };
-    };
-  };
+  initialData: DashboardInitialData;
 }
 
 export default function DashboardClient({ initialData }: DashboardProps) {
-  const { connections, accounts, trading212, manual } = initialData;
+  const { connections, accounts, trading212 } = initialData;
+
+  // Only the manual net-worth block changes when the user adds an entry, so it
+  // lives in client state — allowing a targeted refetch instead of a full
+  // page reload (which would also re-run the rate-limited T212 + bank queries).
+  const [manual, setManual] = useState<ManualData>(initialData.manual);
+
   const [connecting, setConnecting] = useState(false);
   const [connectingSaltEdge, setConnectingSaltEdge] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState("");
   const [refreshing, setRefreshing] = useState<string | null>(null);
 
-  const handleConnect = async () => {
+  /** Refetch just the manual net-worth payload and update it in place. */
+  const refreshNetworth = useCallback(async () => {
+    try {
+      const res = await fetch("/api/manual/networth", { cache: "no-store" });
+      if (res.ok) {
+        const data: ManualData = await res.json();
+        setManual(data);
+      }
+    } catch (e) {
+      console.error("Failed to refresh net worth:", e);
+    }
+  }, []);
+
+  const handleConnect = useCallback(async () => {
     setConnecting(true);
     try {
       const res = await fetch("/api/auth/connect", { method: "POST" });
@@ -85,9 +52,9 @@ export default function DashboardClient({ initialData }: DashboardProps) {
     } finally {
       setConnecting(false);
     }
-  };
+  }, []);
 
-  const handleSaltEdgeConnect = async () => {
+  const handleSaltEdgeConnect = useCallback(async () => {
     if (!selectedProvider) return;
     setConnectingSaltEdge(true);
     try {
@@ -105,9 +72,9 @@ export default function DashboardClient({ initialData }: DashboardProps) {
     } finally {
       setConnectingSaltEdge(false);
     }
-  };
+  }, [selectedProvider]);
 
-  const handleRefresh = async (connectionId: string) => {
+  const handleRefresh = useCallback(async (connectionId: string) => {
     setRefreshing(connectionId);
     try {
       const res = await fetch("/api/data/refresh", {
@@ -124,32 +91,52 @@ export default function DashboardClient({ initialData }: DashboardProps) {
     } finally {
       setRefreshing(null);
     }
-  };
+  }, []);
 
-  const totalBankBalance = accounts.reduce(
-    (sum, acc) => sum + (acc.balance || 0),
-    0,
+  const totalBankBalance = useMemo(
+    () => accounts.reduce((sum, acc) => sum + (acc.balance || 0), 0),
+    [accounts],
   );
-  const totalTrading212Value = trading212.account?.totalValue || 0;
-  const totalCombinedValue = totalBankBalance + totalTrading212Value;
+  const totalTrading212Value = useMemo(
+    () => trading212.account?.totalValue || 0,
+    [trading212],
+  );
+  const totalCombinedValue = useMemo(
+    () => totalBankBalance + totalTrading212Value,
+    [totalBankBalance, totalTrading212Value],
+  );
 
-  const statusColors: Record<string, string> = {
-    AUTHORIZED: "bg-green-100 text-green-800",
-    PENDING: "bg-yellow-100 text-yellow-800",
-    FAILED: "bg-red-100 text-red-800",
-    DELETED: "bg-gray-100 text-gray-800",
-  };
+  const statusColors = useMemo<Record<string, string>>(
+    () => ({
+      AUTHORIZED: "bg-green-100 text-green-800",
+      PENDING: "bg-yellow-100 text-yellow-800",
+      FAILED: "bg-red-100 text-red-800",
+      DELETED: "bg-gray-100 text-gray-800",
+    }),
+    [],
+  );
 
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <h1 className="text-3xl font-bold text-gray-900">
-            memoney — Bank Overview
-          </h1>
-          <p className="text-sm text-gray-500">
-            Your personal dashboard for all bank accounts.
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">
+                memoney — Net worth tracker
+              </h1>
+              <p className="text-sm text-gray-500 mt-1">
+                Track your net worth, bank accounts, and Trading 212 holdings
+                over time.
+              </p>
+            </div>
+            <Link
+              href="/"
+              className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition"
+            >
+              ← Back to tools
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -337,7 +324,7 @@ export default function DashboardClient({ initialData }: DashboardProps) {
                         via {conn.source}
                       </p>
                       <p className="text-sm text-gray-500">
-                        {new Date(conn.createdAt).toLocaleDateString()}
+                        {formatDate(conn.createdAt)}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -489,7 +476,7 @@ export default function DashboardClient({ initialData }: DashboardProps) {
                               {tx.currency} {tx.amount.toFixed(2)}
                             </td>
                             <td className="px-4 py-2 text-sm text-gray-500">
-                              {new Date(tx.dateTime).toLocaleDateString()}
+                              {formatDate(tx.dateTime)}
                             </td>
                           </tr>
                         ))}
@@ -512,9 +499,17 @@ export default function DashboardClient({ initialData }: DashboardProps) {
 
         {/* Manual Data Entry section */}
         <div className="mt-8">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">
-            Manual Entries
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-gray-900">
+              Manual Entries
+            </h2>
+            <Link
+              href="/manual"
+              className="text-sm font-medium text-blue-600 hover:underline"
+            >
+              Manage all manual entries →
+            </Link>
+          </div>
 
           <div className="grid gap-6 lg:grid-cols-3">
             {/* Balance Entry Form */}
@@ -525,7 +520,7 @@ export default function DashboardClient({ initialData }: DashboardProps) {
               <p className="text-xs text-gray-500 mb-3">
                 Snapshot an account balance on any date (assets or liabilities).
               </p>
-              <BalanceForm onSuccess={() => window.location.reload()} />
+              <BalanceForm onSuccess={refreshNetworth} />
             </div>
 
             {/* Income Entry Form */}
@@ -536,7 +531,7 @@ export default function DashboardClient({ initialData }: DashboardProps) {
               <p className="text-xs text-gray-500 mb-3">
                 Record a paycheque, dividend, or other income.
               </p>
-              <IncomeForm onSuccess={() => window.location.reload()} />
+              <IncomeForm onSuccess={refreshNetworth} />
             </div>
 
             {/* Expense Entry Form */}
@@ -547,7 +542,7 @@ export default function DashboardClient({ initialData }: DashboardProps) {
               <p className="text-xs text-gray-500 mb-3">
                 Record a credit card payment or cash expense.
               </p>
-              <ExpenseForm onSuccess={() => window.location.reload()} />
+              <ExpenseForm onSuccess={refreshNetworth} />
             </div>
           </div>
         </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { INPUT_CLASSES } from "@/lib/form-classes";
 
 interface IncomeFormProps {
   onSuccess: () => void;
@@ -66,7 +67,7 @@ export default function IncomeForm({ onSuccess }: IncomeFormProps) {
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            className={INPUT_CLASSES}
             required
           />
         </div>
@@ -79,7 +80,7 @@ export default function IncomeForm({ onSuccess }: IncomeFormProps) {
             step="0.01"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            className={INPUT_CLASSES}
             placeholder="1200.00"
             required
           />
@@ -91,7 +92,7 @@ export default function IncomeForm({ onSuccess }: IncomeFormProps) {
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            className={INPUT_CLASSES}
           >
             {INCOME_CATEGORIES.map((c) => (
               <option key={c} value={c}>
@@ -108,7 +109,7 @@ export default function IncomeForm({ onSuccess }: IncomeFormProps) {
             type="text"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            className={INPUT_CLASSES}
             placeholder="August salary, freelance gig…"
             required
           />

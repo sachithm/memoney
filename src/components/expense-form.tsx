@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { INPUT_CLASSES } from "@/lib/form-classes";
 
 interface ExpenseFormProps {
   onSuccess: () => void;
@@ -74,7 +75,7 @@ export default function ExpenseForm({ onSuccess }: ExpenseFormProps) {
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            className={INPUT_CLASSES}
             required
           />
         </div>
@@ -87,7 +88,7 @@ export default function ExpenseForm({ onSuccess }: ExpenseFormProps) {
             step="0.01"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            className={INPUT_CLASSES}
             placeholder="45.99"
             required
           />
@@ -99,7 +100,7 @@ export default function ExpenseForm({ onSuccess }: ExpenseFormProps) {
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            className={INPUT_CLASSES}
           >
             {EXPENSE_CATEGORIES.map((c) => (
               <option key={c} value={c}>
@@ -115,7 +116,7 @@ export default function ExpenseForm({ onSuccess }: ExpenseFormProps) {
           <select
             value={card}
             onChange={(e) => setCard(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            className={INPUT_CLASSES}
           >
             <option value="">No card</option>
             {CARD_OPTIONS.map((c) => (
@@ -133,7 +134,7 @@ export default function ExpenseForm({ onSuccess }: ExpenseFormProps) {
             type="text"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            className={INPUT_CLASSES}
             placeholder="Tesco, Uber, Netflix…"
             required
           />
@@ -145,7 +146,7 @@ export default function ExpenseForm({ onSuccess }: ExpenseFormProps) {
           type="text"
           value={customCard}
           onChange={(e) => setCustomCard(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+          className={INPUT_CLASSES}
           placeholder="Custom card name"
         />
       )}

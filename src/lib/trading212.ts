@@ -10,6 +10,13 @@ import {
   Trading212Exchange,
 } from "./trading212-types";
 
+// ─── Feature flag ──────────────────────────────────────────
+// Set TRADING212_ENABLED=false in .env to disable the integration entirely
+// (e.g. when the API key is rate-limited / expired and you just want the app
+// to load). When disabled, no network calls are made to Trading 212 and the
+// client behaves as if it were "not configured".
+const TRADING212_ENABLED = process.env.TRADING212_ENABLED !== "false";
+
 // ─── Configuration ─────────────────────────────────────────
 
 function getConfig() {
@@ -41,18 +48,32 @@ function getConfig() {
 // ─── Rate limiter ──────────────────────────────────────────
 // Trading 212 free/sandbox API: 1 request per 5 seconds.
 // We enforce this client-side to avoid 429s.
+//
+// The limiter must SERIALIZE concurrent requests — a naive "sleep based on the
+// last start time" check is a race condition: two callers can both observe the
+// same `lastRequestTime`, both sleep, and then both fire at the same instant,
+// triggering 429 Too Many Requests. We instead chain every caller onto a
+// single in-flight promise queue so requests proceed strictly one at a time.
 
 const RATE_LIMIT_MS = 5000; // 5 seconds between requests
 let lastRequestTime = 0;
+let rateLimitQueue: Promise<void> = Promise.resolve();
 
 async function enforceRateLimit(): Promise<void> {
-  const now = Date.now();
-  const elapsed = now - lastRequestTime;
-  if (elapsed < RATE_LIMIT_MS) {
-    const wait = RATE_LIMIT_MS - elapsed;
-    await new Promise((resolve) => setTimeout(resolve, wait));
-  }
-  lastRequestTime = Date.now();
+  // Chain onto the tail of the queue. The .then callback runs only after the
+  // previous request's "slot" was taken, so concurrent callers can never fire
+  // simultaneously.
+  const prev = rateLimitQueue;
+  const myTurn = prev.then(async () => {
+    const elapsed = Date.now() - lastRequestTime;
+    if (elapsed < RATE_LIMIT_MS) {
+      const wait = RATE_LIMIT_MS - elapsed;
+      await new Promise((resolve) => setTimeout(resolve, wait));
+    }
+    lastRequestTime = Date.now();
+  });
+  rateLimitQueue = myTurn;
+  await myTurn;
 }
 
 // ─── API Request Helper ────────────────────────────────────
@@ -114,17 +135,56 @@ async function t212Request<T>(
 // Cache each endpoint's response for a short period to avoid hitting the
 // 1 req/5s rate limit on repeated fetches.
 
-const CACHE_TTL_MS = 30_000; // 30 seconds
+const CACHE_TTL_MS = 300_000; // 5 minutes — keep the dashboard responsive
 const responseCache = new Map<string, { data: unknown; expiresAt: number }>();
+// De-duplicate concurrent cache misses for the same key: when two callers
+// request the same endpoint at once (e.g. page.tsx fetches both
+// /api/trading212/data and /api/manual/networth, which both call this
+// client), the second caller awaits the first's in-flight request instead of
+// firing a duplicate call that would race into a 429.
+const inFlight = new Map<string, Promise<unknown>>();
 
 async function cachedRequest<T>(cacheKey: string, path: string): Promise<T> {
   const cached = responseCache.get(cacheKey);
+
+  // Serve from cache if still valid
   if (cached && cached.expiresAt > Date.now()) {
     return cached.data as T;
   }
-  const data = await t212Request<T>(path);
-  responseCache.set(cacheKey, { data, expiresAt: Date.now() + CACHE_TTL_MS });
-  return data;
+
+  // Another caller is already fetching this key — await its result
+  const existing = inFlight.get(cacheKey);
+  if (existing) {
+    return existing as T;
+  }
+
+  // Cache miss or expired — attempt a fresh API call
+  const promise = (async () => {
+    try {
+      const data = await t212Request<T>(path);
+      responseCache.set(cacheKey, {
+        data,
+        expiresAt: Date.now() + CACHE_TTL_MS,
+      });
+      return data;
+    } catch (e) {
+      // API call failed — fall back to stale cached data if available
+      if (cached) {
+        console.warn(
+          `T212 API request failed for ${cacheKey}, serving stale cached data:`,
+          (e as Error).message,
+        );
+        return cached.data as T;
+      }
+      // No cache to fall back on — rethrow
+      throw e;
+    } finally {
+      inFlight.delete(cacheKey);
+    }
+  })();
+
+  inFlight.set(cacheKey, promise);
+  return promise as T;
 }
 
 // ─── Public API ────────────────────────────────────────────
@@ -143,6 +203,7 @@ export interface Trading212Client {
 export function createTrading212Client(): Trading212Client {
   return {
     isConfigured: () => {
+      if (!TRADING212_ENABLED) return false;
       try {
         getConfig();
         return true;
@@ -207,6 +268,18 @@ export interface Trading212DashboardData {
 
 export async function getTrading212DashboardData(): Promise<Trading212DashboardData> {
   const client = createTrading212Client();
+
+  // Integration explicitly disabled via TRADING212_ENABLED=false — return the
+  // empty shape with no error so the dashboard shows the friendly "not
+  // configured" hint instead of a red error box.
+  if (!TRADING212_ENABLED) {
+    return {
+      account: null,
+      positions: [],
+      transactions: [],
+      dividends: [],
+    };
+  }
 
   if (!client.isConfigured()) {
     return {

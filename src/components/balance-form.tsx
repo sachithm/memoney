@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { INPUT_CLASSES } from "@/lib/form-classes";
 
 interface BalanceSource {
   id: string;
@@ -112,7 +113,7 @@ export default function BalanceForm({ onSuccess }: BalanceFormProps) {
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            className={INPUT_CLASSES}
             required
           />
         </div>
@@ -125,7 +126,7 @@ export default function BalanceForm({ onSuccess }: BalanceFormProps) {
             step="0.01"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            className={INPUT_CLASSES}
             placeholder="+5000 or -1000"
             required
           />
@@ -164,7 +165,7 @@ export default function BalanceForm({ onSuccess }: BalanceFormProps) {
               value={source}
               onChange={handleSourceChange}
               disabled={loadingSources}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              className={INPUT_CLASSES}
               required
             >
               <option value="">— Select or create source —</option>
