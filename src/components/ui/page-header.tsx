@@ -20,13 +20,13 @@ export default function PageHeader({ title, description }: PageHeaderProps) {
           <h1 className="text-3xl font-bold text-gray-900">{title}</h1>
           <Link
             href="/"
-            className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition"
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition"
           >
             ← Back to Dashboard
           </Link>
         </div>
         {description && (
-          <p className="text-sm text-gray-500 mt-2 max-w-3xl">{description}</p>
+          <p className="text-sm text-gray-600 mt-2 max-w-3xl">{description}</p>
         )}
       </div>
     </header>

@@ -9,6 +9,8 @@ import {
   findCrossoverYear,
   breakevenRent,
   type RentVsBuyInputs,
+  monthlyOverpayForYear,
+  mortgageBalanceAtYear,
 } from "./rent-vs-buy";
 import { monthlyPaymentForLoan, futureValue } from "./mortgage-calculations";
 
@@ -23,11 +25,14 @@ const defaultInputs: RentVsBuyInputs = {
   monthlyHousingBudget: 2000,
   monthlyRent: defaultRent,
   rentIncreaseRate: 0,
+  housingBudgetIncreaseRate: 0,
   mortgageRate: 5,
   mortgageTermYears: 30,
   propertyAppreciationRate: 4,
   stockReturnRate: 7,
   monthlyMaintenanceCost: 200,
+  mortgageOverpayRate: 0,
+  mortgageOverpayMode: "initial",
   projectionYears: 30,
 };
 
@@ -168,6 +173,20 @@ describe("rentScenarioNetWorth", () => {
     expect(escalating).toBeLessThan(noEscalation);
   });
 
+  it("is higher when the housing budget escalates (more to invest each year)", () => {
+    const d = deriveValues(defaultInputs);
+    const noEscalation = rentScenarioNetWorth(defaultInputs, d, 30);
+    expect(noEscalation).toBeCloseTo(671194.33, 0);
+
+    const escalating = rentScenarioNetWorth(
+      { ...defaultInputs, housingBudgetIncreaseRate: 3 },
+      d,
+      30,
+    );
+    // Budget grows each year, so later contributions are larger → higher NW.
+    expect(escalating).toBeGreaterThan(noEscalation);
+  });
+
   it("grows rent each year, so the breakeven rent drops relative to inflation", () => {
     // With a 3% rent escalation the rent scenario is weaker, so a higher-than-
     // breakeven rent is needed to flip the comparison toward buying.
@@ -228,6 +247,20 @@ describe("mortgageScenarioNetWorth", () => {
       30,
     );
     expect(withLowerRent).toBeCloseTo(baseline, 0);
+  });
+
+  it("is higher when the housing budget escalates (more left for stocks)", () => {
+    const d = deriveValues(defaultInputs);
+    const noEscalation = mortgageScenarioNetWorth(defaultInputs, d, 30);
+    expect(noEscalation).toBeCloseTo(1421748.81, 0);
+
+    const escalating = mortgageScenarioNetWorth(
+      { ...defaultInputs, housingBudgetIncreaseRate: 3 },
+      d,
+      30,
+    );
+    // Budget grows each year → larger stock contributions → higher NW.
+    expect(escalating).toBeGreaterThan(noEscalation);
   });
 });
 
@@ -445,6 +478,15 @@ describe("breakevenRent", () => {
     // breakeven rent upward.
     expect(highReturn!).toBeGreaterThan(lowReturn!);
   });
+
+  it("remains finite when the housing budget escalates", () => {
+    const inputs = { ...defaultInputs, housingBudgetIncreaseRate: 5 };
+    const derived = deriveValues(inputs);
+    const result = breakevenRent(inputs, derived);
+    expect(result).not.toBeNull();
+    expect(result).not.toBe(Infinity);
+    expect(Number.isFinite(result as number)).toBe(true);
+  });
 });
 
 describe("buildDetailedComparisonData", () => {
@@ -587,6 +629,211 @@ describe("buildDetailedComparisonData", () => {
     expect(data[1].rentOutgoings).toBeCloseTo(y1, 2);
     expect(data[2].rentOutgoings).toBeCloseTo(y2, 2);
     expect(data[3].rentOutgoings).toBeCloseTo(y3, 2);
+  });
+
+  it("rentStocks equals rentScenarioNW minus the pension pot", () => {
+    const data = buildDetailedComparisonData(defaultInputs);
+    for (const t of [0, 1, 5, 15, 30]) {
+      const p = data[t];
+      expect(p.rentStocks).toBeCloseTo(p.rentScenarioNW - p.pensionPot, 1);
+    }
+  });
+
+  it("annualRent tracks the escalated rent for each year", () => {
+    const inputs = { ...defaultInputs, rentIncreaseRate: 3 };
+    const data = buildDetailedComparisonData(inputs);
+    for (const t of [1, 2, 3, 10]) {
+      const expected =
+        inputs.monthlyRent * Math.pow(1.03, t - 1) * 12;
+      expect(data[t].annualRent).toBeCloseTo(expected, 2);
+    }
+    // Year 0: no rent has been paid yet.
+    expect(data[0].annualRent).toBe(0);
+  });
+
+  it("annualRentStockInvestment shrinks as rent escalates", () => {
+    const inputs = { ...defaultInputs, rentIncreaseRate: 3 };
+    const data = buildDetailedComparisonData(inputs);
+    // Year 1 uses the base rent, so the investment is the max affordable amount.
+    const y1Invest = Math.max(
+      0,
+      inputs.monthlyHousingBudget - inputs.monthlyRent,
+    );
+    expect(data[1].annualRentStockInvestment).toBeCloseTo(y1Invest * 12, 2);
+    // Later years: rent rises, so less is left for stocks.
+    expect(data[2].annualRentStockInvestment).toBeLessThan(
+      data[1].annualRentStockInvestment,
+    );
+    // Year 0: no recurring investment.
+    expect(data[0].annualRentStockInvestment).toBe(0);
+  });
+
+  it("annualMortgagePayment, annualMaintenance and annualMortgageStockInvestment are the monthly values × 12", () => {
+    const data = buildDetailedComparisonData(defaultInputs);
+    const derived = deriveValues(defaultInputs);
+    for (const t of [1, 5, 15, 30]) {
+      const p = data[t];
+      expect(p.annualMortgagePayment).toBeCloseTo(
+        derived.monthlyMortgagePayment * 12,
+        1,
+      );
+      expect(p.annualMaintenance).toBeCloseTo(
+        defaultInputs.monthlyMaintenanceCost * 12,
+        1,
+      );
+      expect(p.annualMortgageStockInvestment).toBeCloseTo(
+        derived.monthlyMortgageStockInvestment * 12,
+        1,
+      );
+    }
+    // Year 0: no recurring payments.
+    expect(data[0].annualMortgagePayment).toBe(0);
+    expect(data[0].annualMaintenance).toBe(0);
+    expect(data[0].annualMortgageStockInvestment).toBe(0);
+  });
+
+  it("annualPension is 0 without a pension and ×12 with one", () => {
+    // No pension → annualPension is 0 everywhere.
+    const dataNoPension = buildDetailedComparisonData(defaultInputs);
+    for (const t of [0, 1, 15]) {
+      expect(dataNoPension[t].annualPension).toBe(0);
+      expect(dataNoPension[t].pensionPot).toBe(0);
+    }
+
+    // With a pension → annualPension = monthlyPension × 12 (year 0 excluded).
+    const dataPension = buildDetailedComparisonData({
+      ...defaultInputs,
+      monthlyPension: 200,
+    });
+    expect(dataPension[0].annualPension).toBe(0);
+    expect(dataPension[0].pensionPot).toBe(0);
+    for (const t of [1, 15, 30]) {
+      expect(dataPension[t].annualPension).toBeCloseTo(200 * 12, 2);
+    }
+  });
+
+  it("rent scenario cost breakdown sums to the total monthly budget", () => {
+    const data = buildDetailedComparisonData(defaultInputs);
+    for (const t of [1, 5, 15, 30]) {
+      const p = data[t];
+      // rentOutgoings (rent + pension) + investing = total budget for the year.
+      expect(p.rentOutgoings + p.annualRentStockInvestment).toBeCloseTo(
+        defaultInputs.monthlyHousingBudget * 12,
+        0,
+      );
+    }
+  });
+
+  it("annualBudget is 0 at year 0 and equals the monthly budget × 12 at year 1", () => {
+    const data = buildDetailedComparisonData(defaultInputs);
+    expect(data[0].annualBudget).toBe(0);
+    expect(data[1].annualBudget).toBeCloseTo(
+      defaultInputs.monthlyHousingBudget * 12,
+      2,
+    );
+  });
+
+  it("annualBudget escalates with housingBudgetIncreaseRate", () => {
+    const inputs = { ...defaultInputs, housingBudgetIncreaseRate: 3 };
+    const data = buildDetailedComparisonData(inputs);
+    // Year 1: base budget × 12
+    expect(data[1].annualBudget).toBeCloseTo(2000 * 12, 2);
+    // Year 2: +3%
+    expect(data[2].annualBudget).toBeCloseTo(2000 * Math.pow(1.03, 1) * 12, 2);
+    // Year 3: +3% again
+    expect(data[3].annualBudget).toBeCloseTo(2000 * Math.pow(1.03, 2) * 12, 2);
+  });
+
+  it("cost breakdown sums to the escalated annual budget when budget grows", () => {
+    const inputs = { ...defaultInputs, housingBudgetIncreaseRate: 3 };
+    const data = buildDetailedComparisonData(inputs);
+    for (const t of [1, 5, 15, 30]) {
+      const p = data[t];
+      // rentOutgoings + investing = annualBudget (not the initial budget × 12)
+      expect(p.rentOutgoings + p.annualRentStockInvestment).toBeCloseTo(
+        p.annualBudget,
+        0,
+      );
+      // mortgageOutgoings + investing = annualBudget
+      expect(p.mortgageOutgoings + p.annualMortgageStockInvestment).toBeCloseTo(
+        p.annualBudget,
+        0,
+      );
+    }
+  });
+
+  it("mortgage stock investment grows over time with budget escalation", () => {
+    const inputs = { ...defaultInputs, housingBudgetIncreaseRate: 3 };
+    const data = buildDetailedComparisonData(inputs);
+    // Year 1 uses the base budget
+    const y1Invest = Math.max(
+      0,
+      inputs.monthlyHousingBudget -
+        deriveValues(inputs).monthlyMortgagePayment -
+        inputs.monthlyMaintenanceCost,
+    );
+    expect(data[1].annualMortgageStockInvestment).toBeCloseTo(y1Invest * 12, 2);
+    // Year 10 has a higher budget → larger investment
+    const y10Budget = inputs.monthlyHousingBudget * Math.pow(1.03, 9);
+    const y10Invest = Math.max(
+      0,
+      y10Budget -
+        deriveValues(inputs).monthlyMortgagePayment -
+        inputs.monthlyMaintenanceCost,
+    );
+    expect(data[10].annualMortgageStockInvestment).toBeCloseTo(
+      y10Invest * 12,
+      2,
+    );
+    expect(data[10].annualMortgageStockInvestment).toBeGreaterThan(
+      data[1].annualMortgageStockInvestment,
+    );
+  });
+
+  it("mortgage scenario cost breakdown sums to the total monthly budget", () => {
+    const data = buildDetailedComparisonData(defaultInputs);
+    for (const t of [1, 5, 15, 30]) {
+      const p = data[t];
+      // mortgageOutgoings (payment + maintenance + pension) + investing
+      // = total budget for the year.
+      expect(p.mortgageOutgoings + p.annualMortgageStockInvestment).toBeCloseTo(
+        defaultInputs.monthlyHousingBudget * 12,
+        0,
+      );
+    }
+  });
+
+  it("mortgage scenario net worth decomposes into home equity + stocks + pension", () => {
+    const data = buildDetailedComparisonData(defaultInputs);
+    for (const t of [0, 1, 5, 15, 30]) {
+      const p = data[t];
+      expect(p.mortgageHomeEquity + p.mortgageStocks + p.pensionPot).toBeCloseTo(
+        p.mortgageScenarioNW,
+        1,
+      );
+    }
+  });
+
+  it("cost breakdown includes pension when a pension is active", () => {
+    const inputs = { ...defaultInputs, monthlyPension: 200 };
+    const data = buildDetailedComparisonData(inputs);
+    const y1 = data[1];
+    expect(y1.annualPension).toBeCloseTo(2400, 2);
+    // rentOutgoings now includes the pension: annualRent + annualPension
+    expect(y1.rentOutgoings).toBeCloseTo(y1.annualRent + y1.annualPension, 2);
+    // mortgageOutgoings includes pension: payment + maintenance + pension
+    expect(y1.mortgageOutgoings).toBeCloseTo(
+      y1.annualMortgagePayment + y1.annualMaintenance + y1.annualPension,
+      2,
+    );
+    // The full breakdown (housing + pension + investing) still equals the budget.
+    expect(y1.rentOutgoings + y1.annualRentStockInvestment).toBeCloseTo(
+      defaultInputs.monthlyHousingBudget * 12,
+      0,
+    );
+    expect(
+      y1.mortgageOutgoings + y1.annualMortgageStockInvestment,
+    ).toBeCloseTo(defaultInputs.monthlyHousingBudget * 12, 0);
   });
 });
 
@@ -800,3 +1047,225 @@ describe("pension", () => {
     expect(beWithPension).toBeCloseTo(beNoPension!, 4);
   });
 });
+
+describe("mortgage overpayment", () => {
+  const overpayInputs = {
+    ...defaultInputs,
+    mortgageOverpayRate: 1,
+    mortgageOverpayMode: "initial" as const,
+  };
+
+  it("deriveValues computes monthlyOverpay as rate% of the initial loan / 12", () => {
+    const d = deriveValues(overpayInputs);
+    // 270000 * 1% / 100 / 12 = 225
+    expect(d.monthlyOverpay).toBeCloseTo(225, 2);
+    // Total outflow = regular payment + overpay
+    expect(d.effectiveMonthlyMortgagePayment).toBeCloseTo(
+      d.monthlyMortgagePayment + 225,
+      2,
+    );
+    // Stocks get what's left after payment + overpay + maintenance
+    // (no pension on defaults)
+    expect(d.monthlyMortgageStockInvestment).toBeCloseTo(
+      2000 - d.monthlyMortgagePayment - 225 - 200,
+      2,
+    );
+  });
+
+  it("deriveValues with zero overpay has monthlyOverpay === 0", () => {
+    const d = deriveValues(defaultInputs);
+    expect(d.monthlyOverpay).toBe(0);
+    expect(d.effectiveMonthlyMortgagePayment).toBeCloseTo(
+      d.monthlyMortgagePayment,
+      6,
+    );
+  });
+
+  it("mortgage balance is lower with overpay than without", () => {
+    const withOverpay = mortgageBalanceAtYear(overpayInputs, deriveValues(overpayInputs), 10);
+    const withoutOverpay = mortgageBalanceAtYear(defaultInputs, deriveValues(defaultInputs), 10);
+    expect(withOverpay).toBeLessThan(withoutOverpay);
+  });
+
+  it("initial-mode overpay is constant across years (until payoff)", () => {
+    const d = deriveValues(overpayInputs);
+    const y1 = monthlyOverpayForYear(overpayInputs, d, 1);
+    const y5 = monthlyOverpayForYear(overpayInputs, d, 5);
+    const y10 = monthlyOverpayForYear(overpayInputs, d, 10);
+    expect(y1).toBeCloseTo(225, 2);
+    expect(y5).toBeCloseTo(225, 2);
+    expect(y10).toBeCloseTo(225, 2);
+  });
+
+  it("remaining-mode overpay shrinks as the loan is repaid", () => {
+    const d = deriveValues({
+      ...defaultInputs,
+      mortgageOverpayRate: 1,
+      mortgageOverpayMode: "remaining" as const,
+    });
+    const y1 = monthlyOverpayForYear(
+      { ...defaultInputs, mortgageOverpayRate: 1, mortgageOverpayMode: "remaining" },
+      d,
+      1,
+    );
+    const y5 = monthlyOverpayForYear(
+      { ...defaultInputs, mortgageOverpayRate: 1, mortgageOverpayMode: "remaining" },
+      d,
+      5,
+    );
+    // At year 1 the balance is close to the initial loan, so overpay ≈ same
+    // as initial mode (270000 × 1% / 12 ≈ 225).
+    expect(y1).toBeCloseTo(225, 0);
+    // By year 5 the balance has shrunk, so the overpay is smaller.
+    expect(y5).toBeLessThan(y1);
+    // And it is still positive (loan not yet paid off).
+    expect(y5).toBeGreaterThan(0);
+  });
+
+  it("remaining-mode overpay reaches 0 once the loan is paid off", () => {
+    const inputs = {
+      ...defaultInputs,
+      mortgageOverpayRate: 1,
+      mortgageOverpayMode: "remaining" as const,
+    };
+    // With 1% remaining-mode overpay the loan is paid off well before 30 years.
+    // After payoff, both regular payment and overpay should be 0.
+    const data = buildDetailedComparisonData(inputs);
+    const payoffYear = data.findIndex(
+      (p) => p.currentMortgageBalance < 0.01,
+    );
+    expect(payoffYear).toBeGreaterThan(0);
+    expect(payoffYear).toBeLessThan(data.length - 1);
+    // Year 0: no overpay (no recurring payments yet)
+    expect(data[0].annualOverpay).toBe(0);
+    // Before payoff: overpay is positive
+    expect(data[Math.min(payoffYear - 1, data.length - 1)].annualOverpay).toBeGreaterThan(0);
+    // After payoff: overpay is 0
+    const afterPayoff = data[payoffYear + 1];
+    expect(afterPayoff.annualOverpay).toBe(0);
+    expect(afterPayoff.annualMortgagePayment).toBe(0);
+    expect(afterPayoff.currentMortgageBalance).toBeCloseTo(0, 2);
+  });
+
+  it("annualOverpay is 0 at year 0 and equals monthlyOverpay × 12 thereafter (initial mode)", () => {
+    const data = buildDetailedComparisonData(overpayInputs);
+    expect(data[0].annualOverpay).toBe(0);
+    const d = deriveValues(overpayInputs);
+    for (const t of [1, 5, 15, 20]) {
+      // Stop if the loan has been paid off by then.
+      if (data[t].currentMortgageBalance < 0.01) {
+        expect(data[t].annualOverpay).toBe(0);
+      } else {
+        expect(data[t].annualOverpay).toBeCloseTo(d.monthlyOverpay * 12, 2);
+      }
+    }
+  });
+
+  it("interest paid each year accounts for the overpay", () => {
+    const inputs = {
+      ...defaultInputs,
+      mortgageOverpayRate: 1,
+      mortgageOverpayMode: "initial" as const,
+    };
+    const data = buildDetailedComparisonData(inputs);
+    const d = deriveValues(inputs);
+    for (const t of [1, 2, 10, 15]) {
+      if (data[t].currentMortgageBalance < 0.01 && t > 0) {
+        // If paid off by this year, no more interest.
+        if (data[t - 1].currentMortgageBalance < 0.01) continue;
+      }
+      const p = data[t];
+      if (p.mortgagePrincipalPaid === 0 && p.currentMortgageBalance === 0) continue;
+      // interest = (regular payment + overpay) × 12 − principal repaid
+      const expectedInterest =
+        (d.monthlyMortgagePayment + d.monthlyOverpay) * 12 - p.mortgagePrincipalPaid;
+      expect(p.interestPaidThisYear).toBeCloseTo(expectedInterest, 0);
+    }
+    // Total interest over the life of the loan is lower with overpay.
+    const withOverpay = buildDetailedComparisonData(inputs).reduce(
+      (sum, p) => sum + p.interestPaidThisYear, 0,
+    );
+    const withoutOverpay = buildDetailedComparisonData(defaultInputs).reduce(
+      (sum, p) => sum + p.interestPaidThisYear, 0,
+    );
+    expect(withOverpay).toBeLessThan(withoutOverpay);
+  });
+
+  it("cost breakdown still sums to the total monthly budget with overpay", () => {
+    const data = buildDetailedComparisonData(overpayInputs);
+    for (const t of [1, 5, 10, 20]) {
+      const p = data[t];
+      // mortgageOutgoings (payment + overpay + maintenance + pension) + investing
+      // = total budget for the year.
+      expect(p.mortgageOutgoings + p.annualMortgageStockInvestment).toBeCloseTo(
+        p.annualBudget,
+        0,
+      );
+    }
+  });
+
+  it("after early payoff, more budget goes to stocks (mortgage payment + overpay freed up)", () => {
+    const inputs = {
+      ...defaultInputs,
+      mortgageOverpayRate: 2,
+      mortgageOverpayMode: "initial" as const,
+    };
+    const data = buildDetailedComparisonData(inputs);
+    // Find the payoff year.
+    const payoffYear = data.findIndex(
+      (p) => p.currentMortgageBalance < 0.01 && p.year > 0,
+    );
+    expect(payoffYear).toBeGreaterThan(0);
+    // One year before payoff: regular payment + overpay are being made.
+    const beforePayoff = data[payoffYear - 1];
+    expect(beforePayoff.annualMortgagePayment).toBeGreaterThan(0);
+    expect(beforePayoff.annualOverpay).toBeGreaterThan(0);
+    // After payoff: no payment, no overpay — all budget goes to stocks (minus maintenance).
+    const afterPayoff = data[Math.min(payoffYear + 1, data.length - 1)];
+    expect(afterPayoff.annualMortgagePayment).toBe(0);
+    expect(afterPayoff.annualOverpay).toBe(0);
+    // More money available for stocks after payoff.
+    expect(afterPayoff.annualMortgageStockInvestment).toBeGreaterThan(
+      beforePayoff.annualMortgageStockInvestment,
+    );
+  });
+
+  it("mortgage scenario net worth is higher with overpay when stock returns are below the mortgage rate", () => {
+    // With 3% stock returns and 5% mortgage rate, overpaying is strictly
+    // beneficial: the interest saved by paying down the loan early grows at
+    // 5%, while the forgone stock contributions only grow at 3%. Plus, once
+    // the mortgage is paid off, the freed-up budget goes to stocks (at 3%),
+    // which still beats paying 5% mortgage interest.
+    const overpay = {
+      ...defaultInputs,
+      mortgageOverpayRate: 1,
+      mortgageOverpayMode: "initial" as const,
+      stockReturnRate: 3,
+    };
+    const noOverpay = { ...defaultInputs, stockReturnRate: 3 };
+    const nwWith = mortgageScenarioNetWorth(overpay, deriveValues(overpay), 30);
+    const nwWithout = mortgageScenarioNetWorth(
+      noOverpay,
+      deriveValues(noOverpay),
+      30,
+    );
+    expect(nwWith).toBeGreaterThan(nwWithout);
+  });
+
+  it("breakeven rent is lower with overpay when stock returns are below the mortgage rate", () => {
+    // Higher mortgage NW → rent scenario must work harder → breakeven rent drops.
+    const overpay = {
+      ...defaultInputs,
+      mortgageOverpayRate: 1,
+      mortgageOverpayMode: "initial" as const,
+      stockReturnRate: 3,
+    };
+    const noOverpay = { ...defaultInputs, stockReturnRate: 3 };
+    const beWith = breakevenRent(overpay, deriveValues(overpay));
+    const beWithout = breakevenRent(noOverpay, deriveValues(noOverpay));
+    expect(beWith).not.toBeNull();
+    expect(beWithout).not.toBeNull();
+    expect(beWith!).toBeLessThan(beWithout!);
+  });
+});
+

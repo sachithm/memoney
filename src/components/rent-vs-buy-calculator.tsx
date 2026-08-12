@@ -52,6 +52,14 @@ const formatDelta = (value: number | null | undefined) => {
   return `${value >= 0 ? "+" : ""}${formatCurrency(value)}`;
 };
 
+/** Tailwind colour class for a signed delta in the tooltip. */
+const deltaColorClass = (value: number | null | undefined): string =>
+  value == null || value === 0
+    ? "text-gray-500"
+    : value > 0
+      ? "text-green-700"
+      : "text-red-700";
+
 function labelForDataKey(dataKey: string): string {
   return dataKey === "rentScenarioNW"
     ? "Rent + Invest"
@@ -106,7 +114,7 @@ export function DetailedTooltip({ active, payload, label, data }: DetailedToolti
       <button
         type="button"
         onClick={() => setExpanded((open) => !open)}
-        className="mt-1.5 w-full text-left text-[10px] font-medium text-blue-700 hover:text-blue-900 underline underline-offset-1"
+        className="mt-1.5 w-full text-left text-xs font-medium text-blue-700 hover:text-blue-900 underline underline-offset-1"
         aria-expanded={expanded}
       >
         {expanded ? "Hide breakdown" : "Show breakdown"}
@@ -114,7 +122,7 @@ export function DetailedTooltip({ active, payload, label, data }: DetailedToolti
 
       {/* Expanded attribution */}
       {expanded && (
-        <div className="mt-2 pt-2 border-t space-y-2 text-[10px]">
+        <div className="mt-2 pt-2 border-t space-y-2 text-xs">
           {/* Rent + Invest */}
           <div>
             <div className="font-medium text-gray-800">Rent + Invest</div>
@@ -129,20 +137,37 @@ export function DetailedTooltip({ active, payload, label, data }: DetailedToolti
               <>
                 <div className="mt-0.5 flex justify-between">
                   <span>Change vs last year</span>
-                  <span className="font-medium">
+                  <span className={`font-medium ${deltaColorClass(point.rentScenarioChange)}`}>
                     {formatDelta(point.rentScenarioChange)}
                   </span>
                 </div>
                 {point.pensionGrowth > 0 && (
                   <div className="flex justify-between">
                     <span>Pension growth</span>
-                    <span>{formatDelta(point.pensionGrowth)}</span>
+                    <span className={deltaColorClass(point.pensionGrowth)}>
+                      {formatDelta(point.pensionGrowth)}
+                    </span>
                   </div>
                 )}
                 <div className="text-gray-600">
                   {point.pensionGrowth > 0
                     ? "(remainder from stock growth + contributions)"
                     : "(entirely from stock growth + contributions)"}
+                </div>
+
+                {/* Net-worth composition */}
+                <div className="mt-1.5 pt-1 border-t border-gray-100 space-y-0.5">
+                  <div className="font-medium text-gray-700">Net worth:</div>
+                  <div className="ml-3 flex justify-between">
+                    <span>Stocks</span>
+                    <span>{formatCurrency(point.rentStocks)}</span>
+                  </div>
+                  {point.pensionPot > 0 && (
+                    <div className="ml-3 flex justify-between">
+                      <span>Pension</span>
+                      <span>{formatCurrency(point.pensionPot)}</span>
+                    </div>
+                  )}
                 </div>
               </>
             )}
@@ -154,6 +179,30 @@ export function DetailedTooltip({ active, payload, label, data }: DetailedToolti
                 {formatCurrency(point.rentOutgoings)}
               </span>
             </div>
+            {/* Cost breakdown — only meaningful for ongoing years (year 0 has no
+                rent; the up-front cost is a single lump sum). */}
+            {point.year > 0 && (
+              <div className="ml-3 space-y-0.5">
+                <div className="flex justify-between">
+                  <span>Annual budget</span>
+                  <span>{formatCurrency(point.annualBudget)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Rent</span>
+                  <span>{formatCurrency(point.annualRent)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Investing (stocks)</span>
+                  <span>{formatCurrency(point.annualRentStockInvestment)}</span>
+                </div>
+                {point.annualPension > 0 && (
+                  <div className="flex justify-between">
+                    <span>Pension</span>
+                    <span>{formatCurrency(point.annualPension)}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Mortgage + Invest */}
@@ -184,18 +233,22 @@ export function DetailedTooltip({ active, payload, label, data }: DetailedToolti
               <>
                 <div className="mt-0.5 flex justify-between">
                   <span>Change vs last year</span>
-                  <span className="font-medium">
+                  <span className={`font-medium ${deltaColorClass(point.mortgageScenarioChange)}`}>
                     {formatDelta(point.mortgageScenarioChange)}
                   </span>
                 </div>
                 <div className="ml-2 space-y-0.5">
                   <div className="flex justify-between">
                     <span>Property appreciation</span>
-                    <span>{formatDelta(point.mortgageAppreciation)}</span>
+                    <span className={deltaColorClass(point.mortgageAppreciation)}>
+                      {formatDelta(point.mortgageAppreciation)}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span>Mortgage principal repaid</span>
-                    <span>{formatDelta(point.mortgagePrincipalPaid)}</span>
+                    <span className={deltaColorClass(point.mortgagePrincipalPaid)}>
+                      {formatDelta(point.mortgagePrincipalPaid)}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span>Interest paid</span>
@@ -203,12 +256,35 @@ export function DetailedTooltip({ active, payload, label, data }: DetailedToolti
                   </div>
                   <div className="flex justify-between">
                     <span>Stock growth</span>
-                    <span>{formatDelta(point.mortgageStocksChange)}</span>
+                    <span className={deltaColorClass(point.mortgageStocksChange)}>
+                      {formatDelta(point.mortgageStocksChange)}
+                    </span>
                   </div>
                   {point.pensionGrowth > 0 && (
                     <div className="flex justify-between">
                       <span>Pension growth</span>
-                      <span>{formatDelta(point.pensionGrowth)}</span>
+                      <span className={deltaColorClass(point.pensionGrowth)}>
+                        {formatDelta(point.pensionGrowth)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Net-worth composition */}
+                <div className="mt-1.5 pt-1 border-t border-gray-100 space-y-0.5">
+                  <div className="font-medium text-gray-700">Net worth:</div>
+                  <div className="ml-3 flex justify-between">
+                    <span>Home equity</span>
+                    <span>{formatCurrency(point.mortgageHomeEquity)}</span>
+                  </div>
+                  <div className="ml-3 flex justify-between">
+                    <span>Stocks</span>
+                    <span>{formatCurrency(point.mortgageStocks)}</span>
+                  </div>
+                  {point.pensionPot > 0 && (
+                    <div className="ml-3 flex justify-between">
+                      <span>Pension</span>
+                      <span>{formatCurrency(point.pensionPot)}</span>
                     </div>
                   )}
                 </div>
@@ -222,6 +298,42 @@ export function DetailedTooltip({ active, payload, label, data }: DetailedToolti
                 {formatCurrency(point.mortgageOutgoings)}
               </span>
             </div>
+            {/* Cost breakdown — only meaningful for ongoing years (year 0 has no
+                recurring mortgage payment; the up-front cost is a single lump sum). */}
+            {point.year > 0 && (
+              <div className="ml-3 space-y-0.5">
+                <div className="flex justify-between">
+                  <span>Mortgage payment</span>
+                  <span>{formatCurrency(point.annualMortgagePayment)}</span>
+                </div>
+                {point.annualOverpay > 0 && (
+                  <div className="flex justify-between">
+                    <span>Overpay</span>
+                    <span>{formatCurrency(point.annualOverpay)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span>Annual budget</span>
+                  <span>{formatCurrency(point.annualBudget)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Maintenance</span>
+                  <span>{formatCurrency(point.annualMaintenance)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Investing (stocks)</span>
+                  <span>
+                    {formatCurrency(point.annualMortgageStockInvestment)}
+                  </span>
+                </div>
+                {point.annualPension > 0 && (
+                  <div className="flex justify-between">
+                    <span>Pension</span>
+                    <span>{formatCurrency(point.annualPension)}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex justify-between border-t pt-1">
@@ -232,6 +344,173 @@ export function DetailedTooltip({ active, payload, label, data }: DetailedToolti
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * A wide, horizontally-scrollable table that shows every computed figure for
+ * each projection year — the numeric equivalent of the
+ * {@link DetailedTooltip} breakdown. Columns are grouped into Net Worth
+ * (per scenario), Year-over-Year Change, and Costs, mirroring the tooltip's
+ * structure. "Summation" columns (scenario NW totals, outgoings totals) are
+ * rendered bold so the component relationships are obvious.
+ */
+export function RentVsBuyResultsTable({
+  data,
+}: {
+  data: RentVsBuyDetailedDataPoint[];
+}) {
+  // Columns whose value is a signed year-over-year change rather than an
+  // absolute amount. Rendered with formatDelta (±) and shown as "—" at
+  // year 0 where there is no prior year to compare against.
+  const isChangeCol = (key: string) =>
+    [
+      "rentScenarioChange",
+      "mortgageScenarioChange",
+      "mortgageAppreciation",
+      "mortgagePrincipalPaid",
+      "mortgageStocksChange",
+      "pensionGrowth",
+    ].includes(key);
+
+  // Tailwind class for a signed delta: green for positive, red for negative,
+  // grey for zero. Makes the YoY movement columns scannable at a glance.
+  const deltaClass = (value: number): string =>
+    value > 0
+      ? "text-green-700"
+      : value < 0
+        ? "text-red-700"
+        : "text-gray-500";
+
+  const cell = (p: RentVsBuyDetailedDataPoint, key: keyof RentVsBuyDetailedDataPoint) =>
+    isChangeCol(key)
+      ? p[key] === 0
+        ? "—"
+        : formatDelta(p[key] as number)
+      : formatCurrency(p[key] as number);
+
+  return (
+    <div className="mt-6 bg-white rounded-lg shadow p-6 overflow-x-auto">
+      <h2 className="text-lg font-semibold text-gray-900 mb-4">
+        Year-by-Year Breakdown
+      </h2>
+      <p className="text-xs text-gray-600 mb-3">
+        Scroll horizontally for the full breakdown. Bold figures are totals
+        (e.g. Rent NW = Stocks + Pension; Outgoings = Rent + Investing +
+        Pension). Budget columns show the annual housing budget, which grows
+        with the Budget Increase Rate.
+      </p>
+      <table className="min-w-full divide-y divide-gray-200 text-xs text-gray-900 whitespace-nowrap">
+        <thead>
+          {/* Group header row */}
+          <tr>
+            <th
+              rowSpan={2}
+              className="sticky left-0 bg-gray-100 text-left font-medium text-gray-900"
+            >
+              Year
+            </th>
+            <th colSpan={3} className="bg-blue-50 text-left text-gray-900">
+              Rent + Invest (NW)
+            </th>
+            <th colSpan={6} className="bg-green-50 text-left text-gray-900">
+              Mortgage + Invest (NW)
+            </th>
+            <th rowSpan={2} className="bg-gray-100 text-gray-900">
+              Difference
+            </th>
+            <th colSpan={7} className="bg-purple-50 text-left text-gray-900">
+              Change (YoY)
+            </th>
+            <th colSpan={5} className="bg-orange-50 text-left text-gray-900">
+              Rent Costs
+            </th>
+            <th colSpan={7} className="bg-teal-50 text-left text-gray-900">
+              Mortgage Costs
+            </th>
+          </tr>
+          {/* Detail header row */}
+          <tr>
+            <th className="bg-blue-50 text-left text-gray-900">NW</th>
+            <th className="bg-blue-50 text-left text-gray-900">Stocks</th>
+            <th className="bg-blue-50 text-left text-gray-900">Pension</th>
+            <th className="bg-green-50 text-left text-gray-900">NW</th>
+            <th className="bg-green-50 text-left text-gray-900">Property</th>
+            <th className="bg-green-50 text-left text-gray-900">Balance</th>
+            <th className="bg-green-50 text-left text-gray-900">Home Equity</th>
+            <th className="bg-green-50 text-left text-gray-900">Stocks</th>
+            <th className="bg-green-50 text-left text-gray-900">Pension</th>
+            <th className="bg-purple-50 text-left text-gray-900">Rent Δ</th>
+            <th className="bg-purple-50 text-left text-gray-900">Mtg Δ</th>
+            <th className="bg-purple-50 text-left text-gray-900">Appreciation</th>
+            <th className="bg-purple-50 text-left text-gray-900">Principal</th>
+            <th className="bg-purple-50 text-left text-gray-900">Interest</th>
+            <th className="bg-purple-50 text-left text-gray-900">Stock Δ</th>
+            <th className="bg-purple-50 text-left text-gray-900">Pens Δ</th>
+            <th className="bg-orange-50 text-left text-gray-900">Budget</th>
+            <th className="bg-orange-50 text-left text-gray-900">Rent</th>
+            <th className="bg-orange-50 text-left text-gray-900">Invest</th>
+            <th className="bg-orange-50 text-left text-gray-900">Pension</th>
+            <th className="bg-orange-50 text-left text-gray-900">Outgoings</th>
+            <th className="bg-teal-50 text-left text-gray-900">Budget</th>
+            <th className="bg-teal-50 text-left text-gray-900">Payment</th>
+            <th className="bg-teal-50 text-left text-gray-900">Overpay</th>
+            <th className="bg-teal-50 text-left text-gray-900">Maintenance</th>
+            <th className="bg-teal-50 text-left text-gray-900">Invest</th>
+            <th className="bg-teal-50 text-left text-gray-900">Pension</th>
+            <th className="bg-teal-50 text-left text-gray-900">Outgoings</th>
+          </tr>
+        </thead>
+        <tbody className="bg-white divide-y divide-gray-200">
+          {data.map((p) => (
+            <tr key={p.year} className={p.year % 2 === 0 ? "" : "bg-gray-50"}>
+              <td className="sticky left-0 bg-white font-medium text-gray-900">
+                {p.year}
+              </td>
+              {/* Rent + Invest NW */}
+              <td className="font-medium text-gray-900">{cell(p, "rentScenarioNW")}</td>
+              <td className="text-gray-900">{cell(p, "rentStocks")}</td>
+              <td className="text-gray-900">{cell(p, "pensionPot")}</td>
+              {/* Mortgage + Invest NW */}
+              <td className="font-medium text-gray-900">{cell(p, "mortgageScenarioNW")}</td>
+              <td className="text-gray-900">{cell(p, "currentPropertyValue")}</td>
+              <td className="text-gray-900">{cell(p, "currentMortgageBalance")}</td>
+              <td className="text-gray-900">{cell(p, "mortgageHomeEquity")}</td>
+              <td className="text-gray-900">{cell(p, "mortgageStocks")}</td>
+              <td className="text-gray-900">{cell(p, "pensionPot")}</td>
+              {/* Difference */}
+              <td
+                className={`font-medium ${p.difference >= 0 ? "text-green-700" : "text-red-700"}`}
+              >
+                {cell(p, "difference")}
+              </td>
+              {/* Change (YoY) — colour-coded: green = positive, red = negative */}
+              <td className={deltaClass(p.rentScenarioChange)}>{cell(p, "rentScenarioChange")}</td>
+              <td className={deltaClass(p.mortgageScenarioChange)}>{cell(p, "mortgageScenarioChange")}</td>
+              <td className={deltaClass(p.mortgageAppreciation)}>{cell(p, "mortgageAppreciation")}</td>
+              <td className={deltaClass(p.mortgagePrincipalPaid)}>{cell(p, "mortgagePrincipalPaid")}</td>
+              <td className="text-gray-900">{cell(p, "interestPaidThisYear")}</td>
+              <td className={deltaClass(p.mortgageStocksChange)}>{cell(p, "mortgageStocksChange")}</td>
+              <td className={deltaClass(p.pensionGrowth)}>{cell(p, "pensionGrowth")}</td>
+              {/* Rent Costs */}
+              <td className="text-gray-900">{cell(p, "annualBudget")}</td>
+              <td className="text-gray-900">{cell(p, "annualRent")}</td>
+              <td className="text-gray-900">{cell(p, "annualRentStockInvestment")}</td>
+              <td className="text-gray-900">{cell(p, "annualPension")}</td>
+              <td className="font-medium text-gray-900">{cell(p, "rentOutgoings")}</td>
+              {/* Mortgage Costs */}
+              <td className="text-gray-900">{cell(p, "annualBudget")}</td>
+              <td className="text-gray-900">{cell(p, "annualMortgagePayment")}</td>
+              <td className="text-gray-900">{cell(p, "annualOverpay")}</td>
+              <td className="text-gray-900">{cell(p, "annualMaintenance")}</td>
+              <td className="text-gray-900">{cell(p, "annualMortgageStockInvestment")}</td>
+              <td className="text-gray-900">{cell(p, "annualPension")}</td>
+              <td className="font-medium text-gray-900">{cell(p, "mortgageOutgoings")}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -250,12 +529,14 @@ const RENT_VS_BUY_PARAMS = [
   "monthlyHousingBudget",
   "monthlyRent",
   "rentIncreaseRate",
+  "housingBudgetIncreaseRate",
   "mortgageRate",
   "termYears",
   "propertyAppreciationRate",
   "stockReturnRate",
   "monthlyMaintenanceCost",
   "monthlyPension",
+  "mortgageOverpayRate",
 ] as const;
 
 /** Read a number from `searchParams`, falling back to `fallback` (clamped to `min`). */
@@ -299,6 +580,12 @@ export default function RentVsBuyCalculator() {
   const [rentIncreaseRate, setRentIncreaseRate] = useState(() =>
     readParam(searchParams, "rentIncreaseRate", 2),
   );
+  // Annual increase rate (%) applied to the total monthly housing budget.
+  // 0 keeps the budget constant; e.g. 3 means the budget rises 3% per year
+  // (wage growth), increasing investment power in both scenarios.
+  const [housingBudgetIncreaseRate, setHousingBudgetIncreaseRate] = useState(
+    () => readParam(searchParams, "housingBudgetIncreaseRate", 0),
+  );
   const [mortgageRate, setMortgageRate] = useState(() =>
     readParam(searchParams, "mortgageRate", 3),
   );
@@ -325,6 +612,18 @@ export default function RentVsBuyCalculator() {
   const [pensionGross, setPensionGross] = useState(() =>
     searchParams?.get("pensionGross") === "1",
   );
+  // Mortgage overpay percentage (of the initial loan or remaining balance).
+  // `mortgageOverpayMode` is stored as "initial"/"remaining" in the URL
+  // (not part of the numeric RENT_VS_BUY_PARAMS loop below).
+  const [mortgageOverpayRate, setMortgageOverpayRate] = useState(() =>
+    readParam(searchParams, "mortgageOverpayRate", 0),
+  );
+  const [mortgageOverpayMode, setMortgageOverpayMode] = useState<
+    "initial" | "remaining"
+  >(() => {
+    const raw = searchParams?.get("mortgageOverpayMode");
+    return raw === "initial" || raw === "remaining" ? raw : "initial";
+  });
 
   // Keep the URL in sync with the current inputs so the configuration can be
   // shared or bookmarked and restored on reload. `history.replaceState` updates
@@ -339,18 +638,21 @@ export default function RentVsBuyCalculator() {
       monthlyHousingBudget,
       monthlyRent,
       rentIncreaseRate,
+      housingBudgetIncreaseRate,
       mortgageRate,
       termYears,
       propertyAppreciationRate,
       stockReturnRate,
       monthlyMaintenanceCost,
       monthlyPension,
+      mortgageOverpayRate,
     };
     const params = new URLSearchParams();
     for (const key of RENT_VS_BUY_PARAMS) {
       params.set(key, toParam(values[key]));
     }
     params.set("pensionGross", pensionGross ? "1" : "0");
+    params.set("mortgageOverpayMode", mortgageOverpayMode);
     window.history.replaceState(
       null,
       "",
@@ -362,12 +664,15 @@ export default function RentVsBuyCalculator() {
     monthlyHousingBudget,
     monthlyRent,
     rentIncreaseRate,
+    housingBudgetIncreaseRate,
     mortgageRate,
     termYears,
     propertyAppreciationRate,
     stockReturnRate,
     monthlyMaintenanceCost,
     monthlyPension,
+    mortgageOverpayRate,
+    mortgageOverpayMode,
     pensionGross,
     pathname,
   ]);
@@ -379,6 +684,7 @@ export default function RentVsBuyCalculator() {
       monthlyHousingBudget,
       monthlyRent,
       rentIncreaseRate,
+      housingBudgetIncreaseRate,
       mortgageRate,
       // mortgageTermYears and projectionYears are locked together via termYears
       mortgageTermYears: termYears,
@@ -387,6 +693,8 @@ export default function RentVsBuyCalculator() {
       monthlyMaintenanceCost,
       monthlyPension,
       pensionGross,
+      mortgageOverpayRate,
+      mortgageOverpayMode,
       projectionYears: termYears,
     }),
     [
@@ -395,6 +703,7 @@ export default function RentVsBuyCalculator() {
       monthlyHousingBudget,
       monthlyRent,
       rentIncreaseRate,
+      housingBudgetIncreaseRate,
       mortgageRate,
       termYears,
       propertyAppreciationRate,
@@ -402,6 +711,8 @@ export default function RentVsBuyCalculator() {
       monthlyMaintenanceCost,
       monthlyPension,
       pensionGross,
+      mortgageOverpayRate,
+      mortgageOverpayMode,
     ],
   );
 
@@ -581,6 +892,47 @@ export default function RentVsBuyCalculator() {
                 </p>
               </div>
 
+              {/* Total Monthly Budget Increase Rate */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Budget Increase Rate (%) per year{" "}
+                  <span className="text-lg font-bold">
+                    {housingBudgetIncreaseRate}
+                  </span>
+                </label>
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="number"
+                    min="0"
+                    max="50"
+                    step="0.5"
+                    value={housingBudgetIncreaseRate}
+                    onChange={(e) =>
+                      setHousingBudgetIncreaseRate(
+                        Math.max(0, Math.min(50, Number(e.target.value) || 0)),
+                      )
+                    }
+                    className={INPUT_CLASSES}
+                  />
+                  <input
+                    type="range"
+                    min="0"
+                    max="10"
+                    step="0.5"
+                    value={housingBudgetIncreaseRate}
+                    onChange={(e) =>
+                      setHousingBudgetIncreaseRate(Number(e.target.value))
+                    }
+                    className={SLIDER_CLASSES}
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  How much your total monthly amount grows each year (e.g. wage
+                  growth). A higher rate increases your stock investment power
+                  in both scenarios over time.
+                </p>
+              </div>
+
               {/* Mortgage Rate */}
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -610,6 +962,78 @@ export default function RentVsBuyCalculator() {
                     className={SLIDER_CLASSES}
                   />
                 </div>
+              </div>
+
+              {/* Mortgage Overpay */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Mortgage Overpay (%)
+                  <span className="text-lg font-bold"> {mortgageOverpayRate}</span>
+                </label>
+                <p className="text-xs text-gray-500 mt-1">
+                  Extra amount paid towards the mortgage each month, as a
+                  percentage of your loan. Overpaying reduces the loan faster
+                  and builds equity sooner.
+                </p>
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.5"
+                    value={mortgageOverpayRate}
+                    onChange={(e) =>
+                      setMortgageOverpayRate(
+                        Math.max(
+                          0,
+                          Math.min(100, Number(e.target.value) || 0),
+                        ),
+                      )
+                    }
+                    className={INPUT_CLASSES}
+                  />
+                  <input
+                    type="range"
+                    min="0"
+                    max="20"
+                    step="0.5"
+                    value={mortgageOverpayRate}
+                    onChange={(e) => setMortgageOverpayRate(Number(e.target.value))}
+                    className={SLIDER_CLASSES}
+                  />
+                </div>
+
+                {/* Mode toggle */}
+                <div className="flex items-center gap-3 mt-2">
+                  <span className="text-xs font-medium text-gray-700">
+                    Of:
+                  </span>
+                  <label className="flex items-center gap-1.5 text-xs">
+                    <input
+                      type="radio"
+                      name="mortgageOverpayMode"
+                      checked={mortgageOverpayMode === "initial"}
+                      onChange={() => setMortgageOverpayMode("initial")}
+                      className="h-3.5 w-3.5 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span>Initial loan</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs">
+                    <input
+                      type="radio"
+                      name="mortgageOverpayMode"
+                      checked={mortgageOverpayMode === "remaining"}
+                      onChange={() => setMortgageOverpayMode("remaining")}
+                      className="h-3.5 w-3.5 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span>Remaining balance</span>
+                  </label>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {mortgageOverpayMode === "initial"
+                    ? "Overpay is a fixed amount (a percentage of the original loan)."
+                    : "Overpay shrinks each year as the loan balance decreases."}
+                </p>
               </div>
 
               {/* Mortgage Term (locked to Projection Period) */}
@@ -803,7 +1227,13 @@ export default function RentVsBuyCalculator() {
                 <div className="flex justify-between">
                   <span className="text-gray-600">Mortgage Payment/Month:</span>
                   <span className="font-medium text-gray-900">
-                    {formatCurrency(derived.monthlyMortgagePayment)}
+                    {formatCurrency(derived.effectiveMonthlyMortgagePayment)}
+                    {derived.monthlyOverpay > 0 && (
+                      <span className="text-xs text-gray-500">
+                        {" "}
+                        (+{formatCurrency(derived.monthlyOverpay)} overpay)
+                      </span>
+                    )}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -1027,6 +1457,9 @@ export default function RentVsBuyCalculator() {
                 </p>
               </div>
             </div>
+
+            {/* Results table (below the chart, right column) */}
+            <RentVsBuyResultsTable data={data} />
           </div>
         </div>
       </main>

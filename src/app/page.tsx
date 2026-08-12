@@ -38,6 +38,12 @@ const TOOLS: ToolCard[] = [
       "Compare your net worth if you rent and invest vs. buy with a mortgage and invest the rest. See how rates, appreciation, and maintenance costs affect which strategy wins.",
     href: "/rent-vs-buy",
   },
+  {
+    title: "Take Home Salary Calculator",
+    description:
+      "Calculate your net pay after UK Income Tax and National Insurance. Enter your salary hourly, daily, monthly, or annually and see a full breakdown of tax-free allowance, tax bands, and deductions.",
+    href: "/take-home-salary",
+  },
 ];
 
 export default function Home() {

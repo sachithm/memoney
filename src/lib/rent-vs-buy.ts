@@ -50,6 +50,42 @@ export interface RentVsBuyInputs {
    * scenario's stock contribution therefore shrinks in later years.
    */
   rentIncreaseRate: number;
+  /**
+   * Annual increase rate (%) applied to the total monthly housing budget.
+   * The budget grows year-on-year as `monthlyHousingBudget *
+   * (1 + housingBudgetIncreaseRate / 100) ^ year`. `0` keeps the budget
+   * constant (the default); e.g. `3` means the budget rises 3% per year (e.g.
+   * wage growth), increasing the amount available for housing and stock
+   * investment in **both** scenarios.
+   */
+  housingBudgetIncreaseRate: number;
+  /**
+   * Optional monthly mortgage overpayment as a percentage of the loan.
+   * An overpayment is an *extra* amount paid toward the mortgage principal
+   * each month, on top of the regular amortising payment. This reduces the
+   * outstanding balance faster, lowering total interest paid and (if large
+   * enough) paying the loan off before the end of the term.
+   *
+   * The overpay is deducted from the mortgage-scenario stock investment — the
+   * total monthly amount is fixed, so every pound overpaid against the loan
+   * is a pound not invested in stocks.
+   *
+   * `0` (the default) disables overpayment and preserves the original model.
+   */
+  mortgageOverpayRate?: number;
+  /**
+   * How to compute the monthly mortgage overpayment from `mortgageOverpayRate`:
+   *
+   * - `"initial"`   — a fixed percentage of the **original** loan amount
+   *                   (`propertyValue − downPayment`). The monthly overpay is
+   *                   constant for the whole term.
+   * - `"remaining"` — a percentage of the **current outstanding balance**.
+   *                   The overpay shrinks as the loan is repaid, so it is
+   *                   largest early and tapers off.
+   *
+   * Defaults to `"initial"` for backward compatibility.
+   */
+  mortgageOverpayMode?: "initial" | "remaining";
   /** Annual mortgage interest rate (%). */
   mortgageRate: number;
   /** Mortgage term in years. */
@@ -127,6 +163,20 @@ export interface RentVsBuyDerived {
    */
   pensionRate: number;
   monthlyRent: number;
+  /**
+   * Constant monthly mortgage overpayment (for `"initial"` mode only).
+   * Computed once in {@link deriveValues} as `mortgageAmount × rate / 100 / 12`.
+   * When `mortgageOverpayMode` is `"remaining"` this is `0` — the overpay is
+   * recomputed each year from the then-current balance.
+   */
+  monthlyOverpay: number;
+  /**
+   * Total monthly mortgage outflow = regular payment + overpay. Used for the
+   * "initial" mode where the overpay is constant. For "remaining" mode this is
+   * still the regular payment + the *initial* overpay (a representative figure
+   * shown in the summary; the tooltip/table show per-year values).
+   */
+  effectiveMonthlyMortgagePayment: number;
   affordable: boolean;
 }
 
@@ -158,6 +208,21 @@ export function deriveValues(inputs: RentVsBuyInputs): RentVsBuyDerived {
   // return rate (not the mortgage rate).
   const pensionRate = inputs.stockReturnRate;
 
+  // Mortgage overpayment — an extra monthly amount paid toward the principal,
+  // reducing the outstanding balance faster. In "initial" mode the overpay is
+  // a fixed percentage of the original loan; in "remaining" mode it is a
+  // percentage of the current balance and is recomputed each year (so it
+  // starts at a representative value here and the per-year exact amount is
+  // resolved in the simulation loop).
+  const overpayRate = inputs.mortgageOverpayRate ?? 0;
+  const overpayMode = inputs.mortgageOverpayMode ?? "initial";
+  const monthlyOverpay =
+    overpayMode === "initial"
+      ? mortgageAmount > 0
+        ? (mortgageAmount * overpayRate) / 100 / 12
+        : 0
+      : 0; // "remaining" mode — computed per-year in the simulation
+
   // Rent scenario: pension is paid out of pocket at the slider value, so only
   // that is subtracted before the rest goes to stocks.
   const monthlyStockInvestment = Math.max(
@@ -165,20 +230,29 @@ export function deriveValues(inputs: RentVsBuyInputs): RentVsBuyDerived {
     inputs.monthlyHousingBudget - inputs.monthlyRent - pensionRaw,
   );
 
-  // Mortgage scenario: mortgage + maintenance + pension are "spent", the rest
-  // goes to stocks (only the out-of-pocket slider value is deducted).
+  // Mortgage scenario: mortgage payment + overpay + maintenance + pension are
+  // "spent", the rest goes to stocks. When the mortgage is paid off the
+  // payment and overpay drop to 0 and the freed-up cash goes to stocks —
+  // that is handled per-year in buildDetailedComparisonData /
+  // mortgageStocksWithEscalation, so the figure here is the *initial* rate
+  // (before any early-payoff adjustment).
   const monthlyMortgageStockInvestment = Math.max(
     0,
     inputs.monthlyHousingBudget -
       monthlyMortgagePayment -
+      monthlyOverpay -
       inputs.monthlyMaintenanceCost -
       pensionRaw,
   );
+
+  const effectiveMonthlyMortgagePayment = monthlyMortgagePayment + monthlyOverpay;
 
   return {
     downPayment,
     mortgageAmount,
     monthlyMortgagePayment,
+    monthlyOverpay,
+    effectiveMonthlyMortgagePayment,
     monthlyStockInvestment,
     monthlyMortgageStockInvestment,
     pensionInvested,
@@ -228,7 +302,11 @@ export function rentScenarioNetWorth(
   derived: RentVsBuyDerived,
   yearsElapsed: number,
 ): number {
-  if (inputs.rentIncreaseRate === 0) {
+  // Use the closed-form only when both rent and budget are constant.
+  if (
+    inputs.rentIncreaseRate === 0 &&
+    inputs.housingBudgetIncreaseRate === 0
+  ) {
     return (
       futureValue(
         inputs.startingInvestment,
@@ -262,6 +340,7 @@ export function rentScenarioNetWorthWithEscalation(
 ): number {
   const rm = inputs.stockReturnRate / 100 / 12;
   const g = inputs.rentIncreaseRate / 100;
+  const gB = inputs.housingBudgetIncreaseRate / 100;
   const totalMonths = Math.round(yearsElapsed * 12);
   const growthToHorizon = Math.pow(1 + rm, totalMonths);
 
@@ -276,9 +355,11 @@ export function rentScenarioNetWorthWithEscalation(
 
   for (let y = 0; y < yearsElapsed; y++) {
     const rentY = inputs.monthlyRent * Math.pow(1 + g, y);
+    // Budget also escalates (e.g. wage growth), increasing investment power.
+    const budgetY = inputs.monthlyHousingBudget * Math.pow(1 + gB, y);
     const monthlyInvest = Math.max(
       0,
-      inputs.monthlyHousingBudget - rentY - monthlyPension,
+      budgetY - rentY - monthlyPension,
     );
     if (monthlyInvest <= 0) continue;
     // Months from the end of year y to the horizon (0 for the final year).
@@ -315,7 +396,55 @@ export interface MortgageScenarioComponents {
 }
 
 /**
- * Compute the component pieces of the mortgage + invest scenario. See
+ * Stock value in the mortgage scenario when the housing budget escalates
+ * annually. Each year's 12 monthly contributions (budget − effective payment
+ * − overpay − maintenance − pension) are valued at end-of-year via
+ * {@link futureValue} and then compounded forward to the horizon. When the
+ * budget is constant and the overpay is constant ("initial" mode or none),
+ * this is mathematically equal to the closed-form
+ * `futureValue(0, rate, monthlyMortgageStockInvestment, n)`.
+ */
+function mortgageStocksWithEscalation(
+  inputs: RentVsBuyInputs,
+  derived: RentVsBuyDerived,
+  yearsElapsed: number,
+): number {
+  if (yearsElapsed <= 0) return 0;
+
+  const rm = inputs.stockReturnRate / 100 / 12;
+  const gB = inputs.housingBudgetIncreaseRate / 100;
+  // Future value, at month 12, of 12 end-of-month £1 contributions.
+  const annualBlockFV = futureValue(0, inputs.stockReturnRate, 1, 1);
+
+  let total = 0;
+  for (let y = 0; y < yearsElapsed; y++) {
+    // Projection-year y is 0-indexed; the "display year" is y+1 (1-indexed).
+    const yearNum = y + 1;
+    const budgetY = inputs.monthlyHousingBudget * Math.pow(1 + gB, y);
+    const monthlyOverpayY = monthlyOverpayForYear(inputs, derived, yearNum);
+    const effectivePayment = effectiveMonthlyMortgagePaymentForYear(
+      inputs,
+      derived,
+      yearNum,
+    );
+    const monthlyInvest = Math.max(
+      0,
+      budgetY -
+        effectivePayment -
+        monthlyOverpayY -
+        inputs.monthlyMaintenanceCost -
+        derived.monthlyPension,
+    );
+    if (monthlyInvest <= 0) continue;
+    // Months from the end of year y to the horizon (0 for the final year).
+    const monthsRemaining = 12 * (yearsElapsed - y - 1);
+    total += monthlyInvest * annualBlockFV * Math.pow(1 + rm, monthsRemaining);
+  }
+  // No lump-sum term: the starting investment went to the down payment.
+  return total;
+}
+
+/**
  * {@link MortgageScenarioComponents}. Extracted from {@link mortgageScenarioNetWorth}
  * so the chart tooltip can attribute net-worth movement to appreciation,
  * principal paydown and stock growth.
@@ -331,28 +460,37 @@ export function mortgageScenarioComponents(
   const currentPropertyValue =
     inputs.propertyValue * Math.pow(1 + monthlyAppreciation, months);
 
-  // Remaining mortgage balance after `yearsElapsed` years (0 for an all-cash
-  // purchase where mortgageAmount === 0)
-  const currentMortgageBalance =
-    derived.mortgageAmount === 0
-      ? 0
-      : remainingBalance(
-          derived.mortgageAmount,
-          inputs.mortgageRate,
-          derived.monthlyMortgagePayment,
-          yearsElapsed,
-        );
+  // Remaining mortgage balance after `yearsElapsed` years, accounting for any
+  // monthly overpayment. Uses the closed-form remainingBalance when there is
+  // no "remaining"-mode overpay; otherwise month-by-month simulation.
+  const currentMortgageBalance = mortgageBalanceAtYear(
+    inputs,
+    derived,
+    yearsElapsed,
+  );
 
   // Home equity = property value minus what's still owed
   const homeEquity = Math.max(0, currentPropertyValue - currentMortgageBalance);
 
-  // Stock investments (no lump-sum because starting investment went to down payment)
-  const stocks = futureValue(
-    0,
-    inputs.stockReturnRate,
-    derived.monthlyMortgageStockInvestment,
-    yearsElapsed,
-  );
+  // Stock investments (no lump-sum because starting investment went to down payment).
+  // The closed-form FV is only valid when the monthly stock contribution is constant
+  // — i.e. no budget escalation AND no overpay (which could cause early payoff
+  // and a step-change in the stock contribution). When either is present, we
+  // loop year-by-year to compound each year's contribution to the horizon.
+  const overpayRate = inputs.mortgageOverpayRate ?? 0;
+  // The closed-form FV is only valid when both the budget and the mortgage
+  // outflow are constant for the entire term — i.e. no budget escalation AND
+  // no overpay (which could cause early payoff and a step-change in the stock
+  // contribution). When either is present, loop year-by-year.
+  const stocks =
+    inputs.housingBudgetIncreaseRate === 0 && overpayRate === 0
+      ? futureValue(
+          0,
+          inputs.stockReturnRate,
+          derived.monthlyMortgageStockInvestment,
+          yearsElapsed,
+        )
+      : mortgageStocksWithEscalation(inputs, derived, yearsElapsed);
   // Pension pot (constant monthly contribution at the stock return rate).
   const pensionPot = pensionPotFor(inputs, derived, yearsElapsed);
 
@@ -426,6 +564,32 @@ export interface RentVsBuyDetailedDataPoint extends RentVsBuyDataPoint {
    */
   rentOutgoings: number;
   mortgageOutgoings: number;
+  /**
+   * Stocks held in the **rent** scenario at this point (= rentScenarioNW −
+   * pensionPot). The rent scenario's net worth is entirely stocks + pension,
+   * so this is the stocks slice. 0 at year 0 is just the starting investment.
+   */
+  rentStocks: number;
+  /** Annual rent paid during this projection year (escalates with rentIncreaseRate). 0 at year 0. */
+  annualRent: number;
+  /** Annual housing budget for this year (escalates with housingBudgetIncreaseRate). 0 at year 0. */
+  annualBudget: number;
+  /** Annual amount invested in stocks in the rent scenario. 0 at year 0. */
+  annualRentStockInvestment: number;
+  /** Annual mortgage payment (monthlyMortgagePayment × 12). 0 at year 0 and for an all-cash purchase. */
+  annualMortgagePayment: number;
+  /** Annual maintenance cost (monthlyMaintenanceCost × 12). 0 at year 0. */
+  annualMaintenance: number;
+  /** Annual amount invested in stocks in the mortgage scenario (monthlyMortgageStockInvestment × 12). 0 at year 0. */
+  annualMortgageStockInvestment: number;
+  /** Annual out-of-pocket pension contribution (monthlyPension × 12, the slider value). 0 at year 0. */
+  annualPension: number;
+  /**
+   * Annual mortgage overpayment for this year (= monthly overpay × 12).
+   * In "initial" mode this is constant; in "remaining" mode it shrinks as the
+   * loan is repaid and is 0 once the mortgage is paid off. 0 at year 0.
+   */
+  annualOverpay: number;
 }
 
 /**
@@ -445,6 +609,180 @@ function annualRentForYear(
   return (
     inputs.monthlyRent * Math.pow(1 + inputs.rentIncreaseRate / 100, year - 1) * 12
   );
+}
+
+/**
+ * Monthly stock investment in the rent scenario during a given projection
+ * year, accounting for rent escalation. Rent grows year-on-year by
+ * `rentIncreaseRate`%, shrinking the leftover available for stocks. The
+ * out-of-pocket pension slider is deducted first (the ×5/3 tax uplift is a
+ * bonus into the pot, not deducted from stocks). Returns 0 at year 0 (no
+ * recurring payments have happened yet).
+ */
+function monthlyRentStockInvestmentForYear(
+  inputs: RentVsBuyInputs,
+  derived: RentVsBuyDerived,
+  year: number,
+): number {
+  if (year <= 0) return 0;
+  const g = inputs.rentIncreaseRate / 100;
+  const rentAtYear = inputs.monthlyRent * Math.pow(1 + g, year - 1);
+  const budgetAtYear = monthlyBudgetForYear(inputs, year);
+  return Math.max(
+    0,
+    budgetAtYear - rentAtYear - derived.monthlyPension,
+  );
+}
+
+/**
+ * Monthly housing budget at projection year `year` (1-indexed; year 0 → 0).
+ * The budget escalates annually by `housingBudgetIncreaseRate`%, modelling
+ * wage or income growth that increases the total amount available for housing
+ * and investing.
+ */
+function monthlyBudgetForYear(
+  inputs: RentVsBuyInputs,
+  year: number,
+): number {
+  if (year <= 0) return 0;
+  return inputs.monthlyHousingBudget * Math.pow(1 + inputs.housingBudgetIncreaseRate / 100, year - 1);
+}
+
+/**
+ * Monthly stock investment in the *mortgage* scenario during a given projection
+ * year, accounting for budget escalation and mortgage overpayment. As the
+ * monthly housing budget grows (e.g. wage growth), the leftover after the
+ * mortgage payment, overpay, maintenance and the pension slider grows too.
+ * Returns 0 at year 0.
+ */
+function monthlyMortgageStockInvestmentForYear(
+  inputs: RentVsBuyInputs,
+  derived: RentVsBuyDerived,
+  year: number,
+): number {
+  if (year <= 0) return 0;
+  const budgetAtYear = monthlyBudgetForYear(inputs, year);
+  const monthlyOverpayAtYear = monthlyOverpayForYear(inputs, derived, year);
+  const effectivePayment = effectiveMonthlyMortgagePaymentForYear(
+    inputs,
+    derived,
+    year,
+  );
+  return Math.max(
+    0,
+    budgetAtYear -
+      effectivePayment -
+      monthlyOverpayAtYear -
+      inputs.monthlyMaintenanceCost -
+      derived.monthlyPension,
+  );
+}
+
+/**
+ * Monthly mortgage overpayment during a given projection year.
+ *
+ * - `"initial"` mode: constant = `mortgageAmount × rate / 100 / 12` (the
+ *   overpay is a fixed percentage of the original loan).
+ * - `"remaining"` mode: `= currentBalance × rate / 100 / 12` (a percentage of
+ *   the outstanding balance at the *start* of the year, so it shrinks as the
+ *   loan is repaid).
+ *
+ * Returns 0 at year 0 (no recurring payments have happened yet) or when the
+ * loan has already been paid off.
+ */
+export function monthlyOverpayForYear(
+  inputs: RentVsBuyInputs,
+  derived: RentVsBuyDerived,
+  year: number,
+): number {
+  if (year <= 0) return 0;
+  const overpayRate = inputs.mortgageOverpayRate ?? 0;
+  if (overpayRate === 0 || derived.mortgageAmount === 0) return 0;
+  const mode = inputs.mortgageOverpayMode ?? "initial";
+  if (mode === "initial") {
+    // Check if the mortgage is already paid off — no overpay once the loan
+    // is gone (the freed-up cash goes to stocks instead).
+    const balanceAtStart = mortgageBalanceAtYear(inputs, derived, year - 1);
+    if (balanceAtStart <= 0) return 0;
+    return derived.monthlyOverpay;
+  }
+  // "remaining" mode — percentage of the balance at the start of this year.
+  const balanceAtStart = mortgageBalanceAtYear(inputs, derived, year - 1);
+  if (balanceAtStart <= 0) return 0;
+  return (balanceAtStart * overpayRate) / 100 / 12;
+}
+
+/**
+ * The regular amortising mortgage payment that is actually paid during a given
+ * year. Once the loan is fully repaid this drops to 0 — the freed-up cash goes
+ * to stocks instead, which is handled in {@link monthlyMortgageStockInvestmentForYear}
+ * and {@link mortgageStocksWithEscalation}.
+ *
+ * Returns 0 at year 0 (no recurring payments have happened yet) or when the
+ * mortgage is already paid off at the start of the year.
+ */
+function effectiveMonthlyMortgagePaymentForYear(
+  inputs: RentVsBuyInputs,
+  derived: RentVsBuyDerived,
+  year: number,
+): number {
+  if (year <= 0 || derived.mortgageAmount === 0) return 0;
+  const balanceAtStart = mortgageBalanceAtYear(inputs, derived, year - 1);
+  if (balanceAtStart <= 0) return 0;
+  return derived.monthlyMortgagePayment;
+}
+
+/**
+ * Outstanding mortgage balance after `yearsElapsed` years, accounting for any
+ * monthly overpayment.
+ *
+ * - **No overpay** (`mortgageOverpayRate === 0`): delegates to the closed-form
+ *   `remainingBalance` — fast and exact.
+ * - **"initial" mode**: the overpay is constant, so the total monthly payment
+ *   (`regular + overpay`) is constant. The closed-form `remainingBalance` is
+ *   called with the combined payment — still fast and exact.
+ * - **"remaining" mode**: the overpay is a percentage of the *current* balance,
+ *   so the monthly payment varies. A month-by-month simulation is used instead
+ *   — slower but the only way to capture the feedback between balance and
+ *   overpay.
+ *
+ * In all cases the balance is clamped to 0 once the loan is fully repaid.
+ */
+export function mortgageBalanceAtYear(
+  inputs: RentVsBuyInputs,
+  derived: RentVsBuyDerived,
+  yearsElapsed: number,
+): number {
+  if (derived.mortgageAmount === 0) return 0;
+  if (yearsElapsed <= 0) return derived.mortgageAmount;
+
+  const overpayRate = inputs.mortgageOverpayRate ?? 0;
+  if (overpayRate === 0 || (inputs.mortgageOverpayMode ?? "initial") === "initial") {
+    // Constant overpay (or none): closed-form with the combined payment.
+    const totalPayment = derived.monthlyMortgagePayment + derived.monthlyOverpay;
+    return remainingBalance(
+      derived.mortgageAmount,
+      inputs.mortgageRate,
+      totalPayment,
+      yearsElapsed,
+    );
+  }
+
+  // "remaining" mode — month-by-month simulation.
+  const r = inputs.mortgageRate / 100 / 12;
+  const months = Math.round(yearsElapsed * 12);
+  let balance = derived.mortgageAmount;
+
+  for (let m = 0; m < months; m++) {
+    if (balance <= 0) return 0;
+    const interest = balance * r;
+    const principal = derived.monthlyMortgagePayment - interest;
+    balance -= principal;
+    // Overpay is a percentage of the *post-regular-payment* balance.
+    const overpay = (balance * overpayRate) / 100 / 12;
+    balance -= overpay;
+  }
+  return Math.max(0, balance);
 }
 
 /**
@@ -480,11 +818,23 @@ export function buildDetailedComparisonData(
       0,
       prevMortgageBalance - c.currentMortgageBalance,
     );
-    // Interest = what you pay on the loan this year = annual payment minus the
-    // principal you claw back into equity. (£0 for an all-cash purchase where
-    // payment is £0, and £0 at year 0 — no payment made yet.)
+
+    // ── Per-year mortgage payment & overpay (accounting for early payoff) ──
+    // Once the mortgage is fully repaid, both the regular payment and the
+    // overpay drop to 0 — the freed-up cash is reallocated to stocks (handled
+    // in the stock-investment calculation below).
+    const annualMortgagePayment =
+      t === 0 ? 0 : effectiveMonthlyMortgagePaymentForYear(inputs, derived, t) * 12;
+    const annualOverpay =
+      t === 0 ? 0 : monthlyOverpayForYear(inputs, derived, t) * 12;
+
+    // Interest = what you pay on the loan this year = total mortgage outflow
+    // (regular payment + overpay) minus the principal you claw back into equity.
+    // £0 at year 0 (no payment made yet) and £0 when the loan is already paid off.
     const interestPaidThisYear =
-      t === 0 ? 0 : derived.monthlyMortgagePayment * 12 - principalPaid;
+      t === 0 || prevMortgageBalance === 0
+        ? 0
+        : derived.monthlyMortgagePayment * 12 + annualOverpay - principalPaid;
 
     const rentScenarioChange = t === 0 ? 0 : rentNW - prevRentNW;
     const mortgageStocksChange = t === 0 ? 0 : c.stocks - prevStocks;
@@ -493,10 +843,10 @@ export function buildDetailedComparisonData(
 
     // Outgoings during this year. At year 0 the "outgoing" is the up-front cost
     // (down payment / starting investment); afterwards it is the recurring
-    // annual housing payment *plus* the out-of-pocket pension contribution —
-    // i.e. the "total spend" for the scenario (pension + rent, or mortgage +
-    // maintenance + pension). The ×5/3 tax uplift is a bonus into the pension
-    // pot, not part of the money spent from the bank account.
+    // annual housing payment *plus* the overpay *plus* the out-of-pocket pension
+    // contribution — i.e. the "total spend" for the scenario (pension + rent, or
+    // mortgage + overpay + maintenance + pension). The ×5/3 tax uplift is a
+    // bonus into the pension pot, not part of the money spent from the bank account.
     const pensionSlider = derived.monthlyPension;
     const rentOutgoings =
       t === 0
@@ -505,10 +855,32 @@ export function buildDetailedComparisonData(
     const mortgageOutgoings =
       t === 0
         ? derived.downPayment
-        : (derived.monthlyMortgagePayment +
-            inputs.monthlyMaintenanceCost +
-            pensionSlider) *
-          12;
+        : (annualMortgagePayment +
+            annualOverpay +
+            inputs.monthlyMaintenanceCost * 12 +
+            pensionSlider * 12);
+
+    // ── Net-worth composition (stocks held in each scenario) ──
+    // The rent scenario's net worth is stocks + pension; the mortgage
+    // scenario already exposes homeEquity, stocks and pensionPot separately.
+    const rentStocks = rentNW - pensionPot;
+
+    // ── Cost breakdown (annual recurring spend, 0 at year 0) ──
+    // These split the "outgoings" total into the housing / investing /
+    // pension components so the tooltip can explain *where* each month's
+    // housing budget went. All four components sum to monthlyHousingBudget × 12
+    // in the affordable case.
+    const annualRent = annualRentForYear(inputs, t);
+    const annualBudget = monthlyBudgetForYear(inputs, t) * 12;
+    const annualRentStockInvestment =
+      monthlyRentStockInvestmentForYear(inputs, derived, t) * 12;
+    const annualMaintenance =
+      t === 0 ? 0 : inputs.monthlyMaintenanceCost * 12;
+    const annualMortgageStockInvestment =
+      t === 0
+        ? 0
+        : monthlyMortgageStockInvestmentForYear(inputs, derived, t) * 12;
+    const annualPension = t === 0 ? 0 : pensionSlider * 12;
 
     data.push({
       year: t,
@@ -529,6 +901,15 @@ export function buildDetailedComparisonData(
       pensionGrowth,
       rentOutgoings,
       mortgageOutgoings,
+      rentStocks,
+      annualRent,
+      annualBudget,
+      annualRentStockInvestment,
+      annualMortgagePayment,
+      annualMaintenance,
+      annualMortgageStockInvestment,
+      annualPension,
+      annualOverpay,
     });
 
     prevRentNW = rentNW;
@@ -615,7 +996,10 @@ export function breakevenRent(
   inputs: RentVsBuyInputs,
   derived: RentVsBuyDerived,
 ): number | null {
-  if (inputs.rentIncreaseRate === 0) {
+  if (
+    inputs.rentIncreaseRate === 0 &&
+    inputs.housingBudgetIncreaseRate === 0
+  ) {
     return breakevenRentNoEscalation(inputs, derived);
   }
   return breakevenRentWithEscalation(inputs, derived);
@@ -686,6 +1070,15 @@ function breakevenRentWithEscalation(
   const budget = inputs.monthlyHousingBudget;
   if (budget <= 0) return null;
 
+  // With a constant (non-escalating) budget the maximum rent that still
+  // leaves something to invest is simply `budget`. When the budget escalates
+  // annually the maximum rent that exhausts the budget in every year is the
+  // budget at the final year — at that rent level nothing is ever invested.
+  const maxBudget = inputs.housingBudgetIncreaseRate
+    ? inputs.monthlyHousingBudget *
+      Math.pow(1 + inputs.housingBudgetIncreaseRate / 100, inputs.projectionYears)
+    : budget;
+
   // f(rent) = rentScenarioNetWorth(rent) − target  (decreasing in rent)
   const valueAtRent = (rent: number): number =>
     rentScenarioNetWorth(
@@ -698,13 +1091,13 @@ function breakevenRentWithEscalation(
   // buying always wins.
   if (valueAtRent(0) <= 0) return null;
 
-  // At the full budget as rent, nothing is invested — if that still wins,
-  // renting wins at any affordable rent.
-  if (valueAtRent(budget) >= 0) return Infinity;
+  // At the full (escalated) budget as rent, nothing is invested — if that
+  // still wins, renting wins at any affordable rent.
+  if (valueAtRent(maxBudget) >= 0) return Infinity;
 
   // Otherwise bisect for the initial rent that ties at the horizon.
   let lo = 0;
-  let hi = budget;
+  let hi = maxBudget;
   for (let i = 0; i < 100; i++) {
     const mid = (lo + hi) / 2;
     if (valueAtRent(mid) > 0) {

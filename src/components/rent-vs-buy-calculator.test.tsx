@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import RentVsBuyCalculator, {
   DetailedTooltip,
+  RentVsBuyResultsTable,
 } from "@/components/rent-vs-buy-calculator";
 import { buildDetailedComparisonData } from "@/lib/rent-vs-buy";
 import { monthlyPaymentForLoan } from "@/lib/mortgage-calculations";
@@ -264,6 +265,286 @@ describe("RentVsBuyCalculator component", () => {
         .parentElement!.lastElementChild!.textContent!.replace(/[£,]/g, ""),
     );
     expect(after).toBeLessThan(before);
+  });
+
+  it("renders a budget increase per year input defaulting to 0", () => {
+    render(<RentVsBuyCalculator />);
+
+    const label = screen.getByText(/Budget Increase Rate \(%\)/);
+    expect(label).toBeInTheDocument();
+
+    const numberInput = label
+      .closest("div")!
+      .querySelector('input[type="number"]') as HTMLInputElement | null;
+    expect(numberInput).not.toBeNull();
+    expect(numberInput!.value).toBe("0");
+  });
+
+  // ── Mortgage overpay ─────────────────────────────────────────
+
+  it("renders a mortgage overpay input defaulting to 0 with initial mode", () => {
+    render(<RentVsBuyCalculator />);
+
+    const label = screen.getByText(/Mortgage Overpay \(%\)/);
+    expect(label).toBeInTheDocument();
+
+    // The number input defaults to 0.
+    const numberInput = label
+      .closest("div")!
+      .querySelector('input[type="number"]') as HTMLInputElement | null;
+    expect(numberInput).not.toBeNull();
+    expect(numberInput!.value).toBe("0");
+
+    // Radio toggle defaults to "initial loan".
+    const initialRadio = screen.getByRole("radio", {
+      name: "Initial loan",
+    }) as HTMLInputElement;
+    const remainingRadio = screen.getByRole("radio", {
+      name: "Remaining balance",
+    }) as HTMLInputElement;
+    expect(initialRadio.checked).toBe(true);
+    expect(remainingRadio.checked).toBe(false);
+  });
+
+  it("increases mortgage overpay rate when the slider is moved", () => {
+    render(<RentVsBuyCalculator />);
+
+    const overpayInput = screen
+      .getByText(/Mortgage Overpay \(%\)/)
+      .closest("div")!
+      .querySelector('input[type="number"]') as HTMLInputElement;
+    fireEvent.change(overpayInput, { target: { value: "2" } });
+
+    expect(overpayInput.value).toBe("2");
+
+    // The overpay annotation should now appear in the summary card.
+    const paymentEl = screen.getByText("Mortgage Payment/Month:");
+    expect(paymentEl.parentElement?.textContent).toMatch(/overpay/);
+  });
+
+  it("overpay increases the mortgage + invest net worth at the horizon (low stock returns)", () => {
+    render(<RentVsBuyCalculator />);
+
+    // Set stock return to 3% (below the 3% mortgage rate default → overpay
+    // saves more interest than it costs in forgone stock growth).
+    const stockInput = screen
+      .getByText(/Stock Market Return Rate \(%\)/)
+      .closest("div")!
+      .querySelector('input[type="number"]') as HTMLInputElement;
+    fireEvent.change(stockInput, { target: { value: "3" } });
+
+    const mortgageNWLabel = screen.getByText("Mortgage + Invest NW:");
+    const before = parseFloat(
+      mortgageNWLabel.parentElement!.lastElementChild!.textContent!.replace(
+        /[£,]/g,
+        "",
+      ),
+    );
+
+    // Apply 3% mortgage overpay (of the initial loan).
+    const overpayInput = screen
+      .getByText(/Mortgage Overpay \(%\)/)
+      .closest("div")!
+      .querySelector('input[type="number"]') as HTMLInputElement;
+    fireEvent.change(overpayInput, { target: { value: "3" } });
+
+    const after = parseFloat(
+      screen
+        .getByText("Mortgage + Invest NW:")
+        .parentElement!.lastElementChild!.textContent!.replace(/[£,]/g, ""),
+    );
+
+    // With 3% stocks < 3% mortgage rate, faster payoff + early freed-up
+    // budget strictly increases the mortgage scenario net worth.
+    expect(after).toBeGreaterThan(before);
+  });
+
+  it("renders an Overpay column in the results table", () => {
+    render(<RentVsBuyCalculator />);
+    // The table header should contain an "Overpay" column.
+    expect(screen.getByText("Overpay", { exact: true })).toBeInTheDocument();
+  });
+
+  it("shows the overpay amount in the tooltip cost breakdown", async () => {
+    render(<RentVsBuyCalculator />);
+
+    // Apply some overpay.
+    const overpayInput = screen
+      .getByText(/Mortgage Overpay \(%\)/)
+      .closest("div")!
+      .querySelector('input[type="number"]') as HTMLInputElement;
+    fireEvent.change(overpayInput, { target: { value: "2" } });
+
+    // The expanded tooltip is complex to trigger with recharts in jsdom;
+    // instead verify the overpay annotation appears in the summary card,
+    // which uses the same derived value.
+    const paymentEl = screen.getByText("Mortgage Payment/Month:");
+    const text = paymentEl.parentElement?.textContent ?? "";
+    expect(text).toMatch(/\+£[\d,]+\.\d{2} overpay/);
+  });
+
+  it("switches the overpay mode radio to remaining when selected", () => {
+    render(<RentVsBuyCalculator />);
+
+    const remainingRadio = screen.getByRole("radio", {
+      name: "Remaining balance",
+    }) as HTMLInputElement;
+    fireEvent.click(remainingRadio);
+    expect(remainingRadio.checked).toBe(true);
+
+    const initialRadio = screen.getByRole("radio", {
+      name: "Initial loan",
+    }) as HTMLInputElement;
+    expect(initialRadio.checked).toBe(false);
+  });
+
+  it("syncs mortgageOverpayRate to the URL via history.replaceState", () => {
+    render(<RentVsBuyCalculator />);
+
+    const overpayInput = screen
+      .getByText(/Mortgage Overpay \(%\)/)
+      .closest("div")!
+      .querySelector('input[type="number"]') as HTMLInputElement;
+    fireEvent.change(overpayInput, { target: { value: "2" } });
+
+    const url = replaceStateSpy!.mock.calls.at(-1)?.[2] as string | undefined;
+    expect(url).toContain("mortgageOverpayRate=2");
+  });
+
+  it("syncs mortgageOverpayMode to the URL via history.replaceState", () => {
+    render(<RentVsBuyCalculator />);
+
+    const remainingRadio = screen.getByRole("radio", {
+      name: "Remaining balance",
+    });
+    fireEvent.click(remainingRadio);
+
+    const url = replaceStateSpy!.mock.calls.at(-1)?.[2] as string | undefined;
+    expect(url).toContain("mortgageOverpayMode=remaining");
+  });
+
+  it("restores overpay from URL params on initial load", () => {
+    mockSearch.params = new URLSearchParams(
+      "mortgageOverpayRate=5&mortgageOverpayMode=remaining",
+    );
+    render(<RentVsBuyCalculator />);
+
+    const numberInput = screen
+      .getByText(/Mortgage Overpay \(%\)/)
+      .closest("div")!
+      .querySelector('input[type="number"]') as HTMLInputElement | null;
+    expect(numberInput!.value).toBe("5");
+
+    const remainingRadio = screen.getByRole("radio", {
+      name: "Remaining balance",
+    }) as HTMLInputElement;
+    expect(remainingRadio.checked).toBe(true);
+  });
+
+  it("overpay reduces the current mortgage balance in the results table", () => {
+    render(<RentVsBuyCalculator />);
+
+    // Find the "Balance" column cells in the table body and capture the year-10
+    // value with zero overpay.
+    const getBalance = (year: number) => {
+      const rows = screen.getAllByRole("row");
+      // The first row is the header; data rows start at index 1.
+      const row = rows[year + 1];
+      // Column order: Year, NW, Stocks, Pens, NW, Property, Balance, Equity, ...
+      // "Balance" is the 7th data cell (index 6).
+      const cells = row.querySelectorAll("td");
+      return cells[6].textContent;
+    };
+
+    const before = getBalance(10);
+
+    // Apply 5% overpay.
+    const overpayInput = screen
+      .getByText(/Mortgage Overpay \(%\)/)
+      .closest("div")!
+      .querySelector('input[type="number"]') as HTMLInputElement;
+    fireEvent.change(overpayInput, { target: { value: "5" } });
+
+    const after = getBalance(10);
+
+    // The balance at year 10 should be lower with overpay.
+    const beforeNum = parseFloat(before.replace(/[£,]/g, ""));
+    const afterNum = parseFloat(after.replace(/[£,]/g, ""));
+    expect(afterNum).toBeLessThan(beforeNum);
+  });
+
+  it("budget escalation raises the net worth of both scenarios", () => {
+    render(<RentVsBuyCalculator />);
+
+    const rentNWEl = screen.getByText("Rent + Invest NW:");
+    const mortgageNWEl = screen.getByText("Mortgage + Invest NW:");
+    const rentBefore = parseFloat(
+      rentNWEl.parentElement!.lastElementChild!.textContent!.replace(/[£,]/g, ""),
+    );
+    const mtgBefore = parseFloat(
+      mortgageNWEl.parentElement!.lastElementChild!.textContent!.replace(
+        /[£,]/g,
+        "",
+      ),
+    );
+
+    const input = screen
+      .getByText(/Budget Increase Rate \(%\)/)
+      .closest("div")!
+      .querySelector('input[type="number"]') as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: "3" } });
+
+    const rentAfter = parseFloat(
+      screen.getByText("Rent + Invest NW:").parentElement!.lastElementChild!
+        .textContent!.replace(/[£,]/g, ""),
+    );
+    const mtgAfter = parseFloat(
+      screen.getByText("Mortgage + Invest NW:").parentElement!.lastElementChild!
+        .textContent!.replace(/[£,]/g, ""),
+    );
+
+    expect(rentAfter).toBeGreaterThan(rentBefore);
+    expect(mtgAfter).toBeGreaterThan(mtgBefore);
+  });
+
+  it("budget escalation is reflected in the annual budget column of the results table", () => {
+    render(<RentVsBuyCalculator />);
+
+    // Default: budget increase is 0, so all years have the same budget (£2500 × 12)
+    const beforeTable = screen.getByRole("table");
+    const beforeRows = beforeTable.querySelectorAll("tbody tr");
+    // Year 1 row should have Budget column = £30,000
+    const year1CellsBefore = beforeRows[1].querySelectorAll("td");
+    const budgetIdx = Array.from(
+      beforeTable.querySelectorAll("thead tr th"),
+    ).findIndex((th) => th.textContent === "Budget");
+    expect(budgetIdx).toBeGreaterThan(0);
+    expect(year1CellsBefore[budgetIdx].textContent).toBe("£30,000");
+
+    // Set budget increase to 3%
+    const input = screen
+      .getByText(/Budget Increase Rate \(%\)/)
+      .closest("div")!
+      .querySelector('input[type="number"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "3" } });
+
+    const afterTable = screen.getByRole("table");
+    const afterRows = afterTable.querySelectorAll("tbody tr");
+    // Year 1 still shows base budget
+    const y1Cells = afterRows[1].querySelectorAll("td");
+    expect(y1Cells[budgetIdx].textContent).toBe("£30,000");
+    // Year 10: budget grown by 3%^9
+    const y10Cells = afterRows[10].querySelectorAll("td");
+    const expectedAnnual = 2500 * Math.pow(1.03, 9) * 12;
+    // formatCurrency: >= 10000 → 0 decimals
+    const expectedFormatted = new Intl.NumberFormat("en-GB", {
+      style: "currency",
+      currency: "GBP",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(expectedAnnual);
+    expect(y10Cells[budgetIdx].textContent).toBe(expectedFormatted);
   });
 
   it("updates mortgage rate changes mortgage scenario investment only", () => {
@@ -579,6 +860,7 @@ const defaultInputs = {
   monthlyHousingBudget: 2500,
   monthlyRent: defaultRent,
   rentIncreaseRate: 2,
+  housingBudgetIncreaseRate: 0,
   mortgageRate: 3,
   mortgageTermYears: 35,
   propertyAppreciationRate: 2,
@@ -811,5 +1093,388 @@ describe("DetailedTooltip", () => {
         formatCurrency(point.pensionGrowth),
       );
     }
+  });
+
+  it("shows a net-worth composition breakdown for each scenario", () => {
+    const point = detailedData[1];
+    render(
+      <DetailedTooltip
+        active
+        payload={makePayload(point)}
+        label={1}
+        data={detailedData}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Show breakdown"));
+
+    // "Net worth:" appears once per scenario.
+    const nwLabels = screen.getAllByText("Net worth:");
+    expect(nwLabels).toHaveLength(2);
+
+    // Rent + Invest: Stocks + Pension (pension is £0 by default, so hidden).
+    // The container holds the label + sub-rows; parentElement is that container.
+    const rentNwContainer = nwLabels[0].parentElement;
+    expect(rentNwContainer?.textContent).toContain(
+      formatCurrency(point.rentStocks),
+    );
+    expect(rentNwContainer?.textContent).toContain("Stocks");
+
+    // Mortgage + Invest: Home equity + Stocks + Pension
+    const mortgageNwContainer = nwLabels[1].parentElement;
+    expect(mortgageNwContainer?.textContent).toContain(
+      formatCurrency(point.mortgageHomeEquity),
+    );
+    expect(mortgageNwContainer?.textContent).toContain(
+      formatCurrency(point.mortgageStocks),
+    );
+    expect(mortgageNwContainer?.textContent).toContain("Home equity");
+    // "Stocks" appears in both NW sections (and the year-0 mortgage section would
+    // add a third, but we're on year 1 here so it's exactly 2).
+    expect(screen.getAllByText("Stocks").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("net-worth composition adds up to the scenario totals", () => {
+    const point = detailedData[10];
+    render(
+      <DetailedTooltip
+        active
+        payload={makePayload(point)}
+        label={10}
+        data={detailedData}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Show breakdown"));
+
+    // Rent: rentStocks should match (rentScenarioNW - pensionPot). The tooltip
+    // shows it as a formatted currency value.
+    expect(point.rentStocks).toBeCloseTo(
+      point.rentScenarioNW - point.pensionPot,
+      1,
+    );
+    // Mortgage: home equity + stocks + pension = mortgageScenarioNW
+    expect(
+      point.mortgageHomeEquity + point.mortgageStocks + point.pensionPot,
+    ).toBeCloseTo(point.mortgageScenarioNW, 1);
+  });
+
+  it("shows a costs breakdown for the rent scenario (rent vs investing)", () => {
+    const point = detailedData[1];
+    render(
+      <DetailedTooltip
+        active
+        payload={makePayload(point)}
+        label={1}
+        data={detailedData}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Show breakdown"));
+
+    // The "Outgoings this year" total is still shown…
+    const outgoings = screen.getAllByText("Outgoings this year");
+    expect(outgoings).toHaveLength(2);
+
+    // The total row labels are spans inside flex divs; each row's parent div
+    // holds the label + value.
+    for (const el of outgoings) {
+      const rowText = el.closest("div")?.textContent ?? "";
+      expect(rowText).toMatch(/Outgoings this year/);
+    }
+
+    // Rent scenario (first "Outgoings this year"): the total includes rentStocks
+    // value on the same row.
+    expect(
+      outgoings[0].closest("div")?.textContent,
+    ).toContain(formatCurrency(point.rentOutgoings));
+
+    expect(screen.getByText("Rent")).toBeInTheDocument();
+    expect(screen.getByText("Rent").closest("div")?.textContent).toContain(
+      formatCurrency(point.annualRent),
+    );
+
+    // "Investing (stocks)" appears in both scenarios.
+    const investRows = screen.getAllByText("Investing (stocks)");
+    expect(investRows).toHaveLength(2);
+    for (const row of investRows) {
+      expect(row.closest("div")?.textContent).toContain(
+        formatCurrency(point.annualRentStockInvestment),
+      );
+    }
+  });
+
+  it("shows a costs breakdown for the mortgage scenario (payment + maintenance + investing)", () => {
+    const point = detailedData[1];
+    render(
+      <DetailedTooltip
+        active
+        payload={makePayload(point)}
+        label={1}
+        data={detailedData}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Show breakdown"));
+
+    // Mortgage scenario: mortgage payment + maintenance + investing.
+    expect(screen.getByText("Mortgage payment")).toBeInTheDocument();
+    expect(
+      screen.getByText("Mortgage payment").closest("div")?.textContent,
+    ).toContain(formatCurrency(point.annualMortgagePayment));
+
+    expect(screen.getByText("Maintenance")).toBeInTheDocument();
+    expect(
+      screen.getByText("Maintenance").closest("div")?.textContent,
+    ).toContain(formatCurrency(point.annualMaintenance));
+
+    // The second "Outgoings this year" is the mortgage scenario.
+    expect(
+      screen.getAllByText("Outgoings this year")[1].closest("div")?.textContent,
+    ).toContain(formatCurrency(point.mortgageOutgoings));
+  });
+
+  it("shows the pension cost line in the breakdown when a pension is active", () => {
+    const pensionInputs = { ...defaultInputs, monthlyPension: 200 };
+    const pensionData = buildDetailedComparisonData(pensionInputs);
+    const point = pensionData[1];
+    render(
+      <DetailedTooltip
+        active
+        payload={makePayload(point)}
+        label={1}
+        data={pensionData}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Show breakdown"));
+
+    // Both scenarios surface a "Pension" cost line (annual out-of-pocket).
+    const pensionRows = screen.getAllByText("Pension");
+    // "Pension growth" and "Pension" cost lines all match — filter to the cost
+    // line by checking the value matches annualPension.
+    const matching = pensionRows.filter(
+      (el) =>
+        el.closest("div")?.textContent?.includes(
+          formatCurrency(point.annualPension),
+        ) ?? false,
+    );
+    expect(matching.length).toBe(2);
+  });
+
+  it("hides the pension cost line when no pension is active", () => {
+    const point = detailedData[1]; // no pension in default inputs
+    render(
+      <DetailedTooltip
+        active
+        payload={makePayload(point)}
+        label={1}
+        data={detailedData}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Show breakdown"));
+
+    // No standalone "Pension" cost line (there IS "Pension growth" only when
+    // pension > 0, which it isn't here).
+    expect(point.pensionPot).toBe(0);
+    expect(screen.queryByText("Pension")).not.toBeInTheDocument();
+  });
+
+  it("hides the net-worth and costs breakdown for the initial position (year 0)", () => {
+    const point = detailedData[0];
+    render(
+      <DetailedTooltip
+        active
+        payload={makePayload(point)}
+        label={0}
+        data={detailedData}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Show breakdown"));
+
+    // Year 0 still shows the initial position content.
+    expect(
+      screen.getByText(/Starting investment parked in stocks/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Down payment (property equity)"),
+    ).toBeInTheDocument();
+
+    // No breakdown sections at year 0.
+    expect(screen.queryByText("Net worth:")).not.toBeInTheDocument();
+    expect(screen.queryByText("Home equity")).not.toBeInTheDocument();
+    expect(screen.queryByText("Investing (stocks)")).not.toBeInTheDocument();
+  });
+});
+
+// ── Results table tests ───────────────────────────────────────────────
+// The full-width table below the chart is tested in isolation with the
+// calculator's real default inputs so we don't depend on Recharts.
+describe("RentVsBuyResultsTable", () => {
+  it("renders a row per projection year (0..35)", () => {
+    render(<RentVsBuyResultsTable data={detailedData} />);
+
+    // 36 body rows (years 0–35) + 2 header rows.
+    const rows = screen.getAllByRole("row");
+    expect(rows).toHaveLength(38);
+  });
+
+  it("renders the year column with sorted values 0..35", () => {
+    render(<RentVsBuyResultsTable data={detailedData} />);
+
+    // The year column is sticky and contains the years 0–35.
+    const yearCells = screen.getAllByText("0", { exact: true });
+    expect(yearCells.length).toBeGreaterThanOrEqual(1);
+
+    // All years 0..35 are present as standalone year cells.
+    for (let y = 0; y <= 35; y++) {
+      // Use a within-table query by checking the row text contains the year.
+      const rows = screen.getAllByRole("row");
+      const found = rows.some((r) =>
+        r.textContent?.startsWith(`${y}`),
+      );
+      expect(found).toBe(true);
+    }
+  });
+
+  it("renders all column-group headers", () => {
+    render(<RentVsBuyResultsTable data={detailedData} />);
+
+    expect(screen.getByText("Rent + Invest (NW)")).toBeInTheDocument();
+    expect(
+      screen.getByText("Mortgage + Invest (NW)"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Change (YoY)")).toBeInTheDocument();
+    expect(screen.getByText("Rent Costs")).toBeInTheDocument();
+    expect(screen.getByText("Mortgage Costs")).toBeInTheDocument();
+  });
+
+  it("renders detail column headers for every component", () => {
+    render(<RentVsBuyResultsTable data={detailedData} />);
+
+    // Rent NW group
+    expect(screen.getAllByText("NW").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("Stocks").length).toBeGreaterThanOrEqual(2);
+
+    // Mortgage NW group
+    expect(screen.getByText("Property")).toBeInTheDocument();
+    expect(screen.getByText("Balance")).toBeInTheDocument();
+    expect(screen.getByText("Home Equity")).toBeInTheDocument();
+
+    // Change group
+    expect(screen.getByText("Appreciation")).toBeInTheDocument();
+    expect(screen.getByText("Principal")).toBeInTheDocument();
+    expect(screen.getByText("Interest")).toBeInTheDocument();
+    expect(screen.getByText("Pens Δ")).toBeInTheDocument();
+
+    // Rent Costs group
+    expect(screen.getAllByText("Outgoings")).toHaveLength(2);
+
+    // Mortgage Costs group
+    expect(screen.getByText("Maintenance")).toBeInTheDocument();
+    expect(screen.getByText("Payment")).toBeInTheDocument();
+  });
+
+  it("renders the final-year net-worth values in the correct cells", () => {
+    render(<RentVsBuyResultsTable data={detailedData} />);
+
+    const final = detailedData[35];
+    const rows = screen.getAllByRole("row");
+    // The last body row is the final year (year 35).
+    const finalRow = rows[rows.length - 1];
+
+    expect(finalRow.textContent).toContain(
+      formatCurrency(final.rentScenarioNW),
+    );
+    expect(finalRow.textContent).toContain(
+      formatCurrency(final.mortgageScenarioNW),
+    );
+    expect(finalRow.textContent).toContain(
+      formatCurrency(final.rentStocks),
+    );
+    expect(finalRow.textContent).toContain(
+      formatCurrency(final.mortgageHomeEquity),
+    );
+    expect(finalRow.textContent).toContain(
+      formatCurrency(final.mortgageStocks),
+    );
+    expect(finalRow.textContent).toContain(
+      formatCurrency(final.difference),
+    );
+  });
+
+  it("renders final-year cost breakdown values", () => {
+    render(<RentVsBuyResultsTable data={detailedData} />);
+
+    const final = detailedData[35];
+    const rows = screen.getAllByRole("row");
+    const finalRow = rows[rows.length - 1];
+
+    expect(finalRow.textContent).toContain(formatCurrency(final.annualRent));
+    expect(finalRow.textContent).toContain(
+      formatCurrency(final.annualRentStockInvestment),
+    );
+    expect(finalRow.textContent).toContain(formatCurrency(final.rentOutgoings));
+    expect(finalRow.textContent).toContain(
+      formatCurrency(final.annualMortgagePayment),
+    );
+    expect(finalRow.textContent).toContain(
+      formatCurrency(final.annualMaintenance),
+    );
+    expect(finalRow.textContent).toContain(
+      formatCurrency(final.annualMortgageStockInvestment),
+    );
+    expect(finalRow.textContent).toContain(formatCurrency(final.mortgageOutgoings));
+  });
+
+  it("shows — for change columns at year 0 and real deltas afterwards", () => {
+    render(<RentVsBuyResultsTable data={detailedData} />);
+
+    const rows = screen.getAllByRole("row");
+    // Body rows start after both header rows.
+    const bodyRows = rows.slice(2);
+    const y0 = bodyRows[0];
+
+    // Year 0: all change columns are 0 → rendered as "—"
+    expect(y0.textContent).toContain("—");
+    // But absolute-value columns still show currency.
+    expect(y0.textContent).toContain(
+      formatCurrency(detailedData[0].rentScenarioNW),
+    );
+
+    // Year 1: change columns show signed deltas.
+    const y1 = bodyRows[1];
+    expect(y1.textContent).toContain(
+      formatCurrency(detailedData[1].rentScenarioChange).replace("£", "+£"),
+    );
+  });
+
+  it("renders with pension data and shows pension cost/outgoings rows", () => {
+    const pensionInputs = { ...defaultInputs, monthlyPension: 200 };
+    const pensionData = buildDetailedComparisonData(pensionInputs);
+    render(<RentVsBuyResultsTable data={pensionData} />);
+
+    const rows = screen.getAllByRole("row");
+    const bodyRows = rows.slice(2);
+    const y1 = bodyRows[1];
+
+    expect(y1.textContent).toContain(formatCurrency(pensionData[1].annualPension)); // £2,400ension
+    // Pension pot should appear in both NW sections.
+    expect(y1.textContent).toContain(
+      formatCurrency(pensionData[1].pensionPot),
+    );
+  });
+
+  it("is rendered below the chart in the full calculator", () => {
+    render(<RentVsBuyCalculator />);
+
+    expect(
+      screen.getByRole("heading", { name: /Year-by-Year Breakdown/ }),
+    ).toBeInTheDocument();
+    // The table itself is present.
+    const table = screen.getByRole("table");
+    expect(table).toBeInTheDocument();
   });
 });
