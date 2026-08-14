@@ -391,126 +391,129 @@ export function RentVsBuyResultsTable({
       : formatCurrency(p[key] as number);
 
   return (
-    <div className="mt-6 bg-white rounded-lg shadow p-6 overflow-x-auto">
+    <div className="mt-6 bg-white rounded-lg shadow p-6">
       <h2 className="text-lg font-semibold text-gray-900 mb-4">
         Year-by-Year Breakdown
       </h2>
-      <p className="text-xs text-gray-600 mb-3">
+      <p className="text-xs text-gray-600 mb-4">
         Scroll horizontally for the full breakdown. Bold figures are totals
         (e.g. Rent NW = Stocks + Pension; Outgoings = Rent + Investing +
         Pension). Budget columns show the annual housing budget, which grows
         with the Budget Increase Rate.
       </p>
-      <table className="min-w-full divide-y divide-gray-200 text-xs text-gray-900 whitespace-nowrap">
-        <thead>
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200 text-xs text-gray-900 whitespace-nowrap">
+          <thead>
           {/* Group header row */}
           <tr>
             <th
               rowSpan={2}
-              className="sticky left-0 bg-gray-100 text-left font-medium text-gray-900"
+              className="sticky left-0 z-20 bg-gray-100 px-3 py-1.5 text-left font-medium text-gray-900 shadow-[2px_0_4px_rgba(0,0,0,0.05)]
+              "
             >
               Year
             </th>
-            <th colSpan={3} className="bg-blue-50 text-left text-gray-900">
+            <th colSpan={3} className="bg-blue-50 px-3 py-1.5 text-left text-gray-900">
               Rent + Invest (NW)
             </th>
-            <th colSpan={6} className="bg-green-50 text-left text-gray-900">
+            <th colSpan={6} className="bg-green-50 px-3 py-1.5 text-left text-gray-900">
               Mortgage + Invest (NW)
             </th>
-            <th rowSpan={2} className="bg-gray-100 text-gray-900">
+            <th rowSpan={2} className="bg-gray-100 px-3 py-1.5 text-gray-900">
               Difference
             </th>
-            <th colSpan={7} className="bg-purple-50 text-left text-gray-900">
+            <th colSpan={7} className="bg-purple-50 px-3 py-1.5 text-left text-gray-900">
               Change (YoY)
             </th>
-            <th colSpan={5} className="bg-orange-50 text-left text-gray-900">
+            <th colSpan={5} className="bg-orange-50 px-3 py-1.5 text-left text-gray-900">
               Rent Costs
             </th>
-            <th colSpan={7} className="bg-teal-50 text-left text-gray-900">
+            <th colSpan={7} className="bg-teal-50 px-3 py-1.5 text-left text-gray-900">
               Mortgage Costs
             </th>
           </tr>
           {/* Detail header row */}
           <tr>
-            <th className="bg-blue-50 text-left text-gray-900">NW</th>
-            <th className="bg-blue-50 text-left text-gray-900">Stocks</th>
-            <th className="bg-blue-50 text-left text-gray-900">Pension</th>
-            <th className="bg-green-50 text-left text-gray-900">NW</th>
-            <th className="bg-green-50 text-left text-gray-900">Property</th>
-            <th className="bg-green-50 text-left text-gray-900">Balance</th>
-            <th className="bg-green-50 text-left text-gray-900">Home Equity</th>
-            <th className="bg-green-50 text-left text-gray-900">Stocks</th>
-            <th className="bg-green-50 text-left text-gray-900">Pension</th>
-            <th className="bg-purple-50 text-left text-gray-900">Rent Δ</th>
-            <th className="bg-purple-50 text-left text-gray-900">Mtg Δ</th>
-            <th className="bg-purple-50 text-left text-gray-900">Appreciation</th>
-            <th className="bg-purple-50 text-left text-gray-900">Principal</th>
-            <th className="bg-purple-50 text-left text-gray-900">Interest</th>
-            <th className="bg-purple-50 text-left text-gray-900">Stock Δ</th>
-            <th className="bg-purple-50 text-left text-gray-900">Pens Δ</th>
-            <th className="bg-orange-50 text-left text-gray-900">Budget</th>
-            <th className="bg-orange-50 text-left text-gray-900">Rent</th>
-            <th className="bg-orange-50 text-left text-gray-900">Invest</th>
-            <th className="bg-orange-50 text-left text-gray-900">Pension</th>
-            <th className="bg-orange-50 text-left text-gray-900">Outgoings</th>
-            <th className="bg-teal-50 text-left text-gray-900">Budget</th>
-            <th className="bg-teal-50 text-left text-gray-900">Payment</th>
-            <th className="bg-teal-50 text-left text-gray-900">Overpay</th>
-            <th className="bg-teal-50 text-left text-gray-900">Maintenance</th>
-            <th className="bg-teal-50 text-left text-gray-900">Invest</th>
-            <th className="bg-teal-50 text-left text-gray-900">Pension</th>
-            <th className="bg-teal-50 text-left text-gray-900">Outgoings</th>
+            <th className="bg-blue-50 px-3 py-1.5 text-left text-gray-900">NW</th>
+            <th className="bg-blue-50 px-3 py-1.5 text-left text-gray-900">Stocks</th>
+            <th className="bg-blue-50 px-3 py-1.5 text-left text-gray-900">Pension</th>
+            <th className="bg-green-50 px-3 py-1.5 text-left text-gray-900">NW</th>
+            <th className="bg-green-50 px-3 py-1.5 text-left text-gray-900">Property</th>
+            <th className="bg-green-50 px-3 py-1.5 text-left text-gray-900">Balance</th>
+            <th className="bg-green-50 px-3 py-1.5 text-left text-gray-900">Home Equity</th>
+            <th className="bg-green-50 px-3 py-1.5 text-left text-gray-900">Stocks</th>
+            <th className="bg-green-50 px-3 py-1.5 text-left text-gray-900">Pension</th>
+            <th className="bg-purple-50 px-3 py-1.5 text-left text-gray-900">Rent Δ</th>
+            <th className="bg-purple-50 px-3 py-1.5 text-left text-gray-900">Mtg Δ</th>
+            <th className="bg-purple-50 px-3 py-1.5 text-left text-gray-900">Appreciation</th>
+            <th className="bg-purple-50 px-3 py-1.5 text-left text-gray-900">Principal</th>
+            <th className="bg-purple-50 px-3 py-1.5 text-left text-gray-900">Interest</th>
+            <th className="bg-purple-50 px-3 py-1.5 text-left text-gray-900">Stock Δ</th>
+            <th className="bg-purple-50 px-3 py-1.5 text-left text-gray-900">Pens Δ</th>
+            <th className="bg-orange-50 px-3 py-1.5 text-left text-gray-900">Budget</th>
+            <th className="bg-orange-50 px-3 py-1.5 text-left text-gray-900">Rent</th>
+            <th className="bg-orange-50 px-3 py-1.5 text-left text-gray-900">Invest</th>
+            <th className="bg-orange-50 px-3 py-1.5 text-left text-gray-900">Pension</th>
+            <th className="bg-orange-50 px-3 py-1.5 text-left text-gray-900">Outgoings</th>
+            <th className="bg-teal-50 px-3 py-1.5 text-left text-gray-900">Budget</th>
+            <th className="bg-teal-50 px-3 py-1.5 text-left text-gray-900">Payment</th>
+            <th className="bg-teal-50 px-3 py-1.5 text-left text-gray-900">Overpay</th>
+            <th className="bg-teal-50 px-3 py-1.5 text-left text-gray-900">Maintenance</th>
+            <th className="bg-teal-50 px-3 py-1.5 text-left text-gray-900">Invest</th>
+            <th className="bg-teal-50 px-3 py-1.5 text-left text-gray-900">Pension</th>
+            <th className="bg-teal-50 px-3 py-1.5 text-left text-gray-900">Outgoings</th>
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
           {data.map((p) => (
             <tr key={p.year} className={p.year % 2 === 0 ? "" : "bg-gray-50"}>
-              <td className="sticky left-0 bg-white font-medium text-gray-900">
+              <td className="sticky left-0 z-10 bg-white px-3 py-1.5 font-medium text-gray-900">
                 {p.year}
               </td>
               {/* Rent + Invest NW */}
-              <td className="font-medium text-gray-900">{cell(p, "rentScenarioNW")}</td>
-              <td className="text-gray-900">{cell(p, "rentStocks")}</td>
-              <td className="text-gray-900">{cell(p, "pensionPot")}</td>
+              <td className="px-3 py-1.5 font-medium text-gray-900">{cell(p, "rentScenarioNW")}</td>
+              <td className="px-3 py-1.5 text-gray-900">{cell(p, "rentStocks")}</td>
+              <td className="px-3 py-1.5 text-gray-900">{cell(p, "pensionPot")}</td>
               {/* Mortgage + Invest NW */}
-              <td className="font-medium text-gray-900">{cell(p, "mortgageScenarioNW")}</td>
-              <td className="text-gray-900">{cell(p, "currentPropertyValue")}</td>
-              <td className="text-gray-900">{cell(p, "currentMortgageBalance")}</td>
-              <td className="text-gray-900">{cell(p, "mortgageHomeEquity")}</td>
-              <td className="text-gray-900">{cell(p, "mortgageStocks")}</td>
-              <td className="text-gray-900">{cell(p, "pensionPot")}</td>
+              <td className="px-3 py-1.5 font-medium text-gray-900">{cell(p, "mortgageScenarioNW")}</td>
+              <td className="px-3 py-1.5 text-gray-900">{cell(p, "currentPropertyValue")}</td>
+              <td className="px-3 py-1.5 text-gray-900">{cell(p, "currentMortgageBalance")}</td>
+              <td className="px-3 py-1.5 text-gray-900">{cell(p, "mortgageHomeEquity")}</td>
+              <td className="px-3 py-1.5 text-gray-900">{cell(p, "mortgageStocks")}</td>
+              <td className="px-3 py-1.5 text-gray-900">{cell(p, "pensionPot")}</td>
               {/* Difference */}
               <td
-                className={`font-medium ${p.difference >= 0 ? "text-green-700" : "text-red-700"}`}
+                className={`px-3 py-1.5 font-medium ${p.difference >= 0 ? "text-green-700" : "text-red-700"}`}
               >
                 {cell(p, "difference")}
               </td>
               {/* Change (YoY) — colour-coded: green = positive, red = negative */}
-              <td className={deltaClass(p.rentScenarioChange)}>{cell(p, "rentScenarioChange")}</td>
-              <td className={deltaClass(p.mortgageScenarioChange)}>{cell(p, "mortgageScenarioChange")}</td>
-              <td className={deltaClass(p.mortgageAppreciation)}>{cell(p, "mortgageAppreciation")}</td>
-              <td className={deltaClass(p.mortgagePrincipalPaid)}>{cell(p, "mortgagePrincipalPaid")}</td>
-              <td className="text-gray-900">{cell(p, "interestPaidThisYear")}</td>
-              <td className={deltaClass(p.mortgageStocksChange)}>{cell(p, "mortgageStocksChange")}</td>
-              <td className={deltaClass(p.pensionGrowth)}>{cell(p, "pensionGrowth")}</td>
+              <td className={`px-3 py-1.5 ${deltaClass(p.rentScenarioChange)}`}>{cell(p, "rentScenarioChange")}</td>
+              <td className={`px-3 py-1.5 ${deltaClass(p.mortgageScenarioChange)}`}>{cell(p, "mortgageScenarioChange")}</td>
+              <td className={`px-3 py-1.5 ${deltaClass(p.mortgageAppreciation)}`}>{cell(p, "mortgageAppreciation")}</td>
+              <td className={`px-3 py-1.5 ${deltaClass(p.mortgagePrincipalPaid)}`}>{cell(p, "mortgagePrincipalPaid")}</td>
+              <td className="px-3 py-1.5 text-gray-900">{cell(p, "interestPaidThisYear")}</td>
+              <td className={`px-3 py-1.5 ${deltaClass(p.mortgageStocksChange)}`}>{cell(p, "mortgageStocksChange")}</td>
+              <td className={`px-3 py-1.5 ${deltaClass(p.pensionGrowth)}`}>{cell(p, "pensionGrowth")}</td>
               {/* Rent Costs */}
-              <td className="text-gray-900">{cell(p, "annualBudget")}</td>
-              <td className="text-gray-900">{cell(p, "annualRent")}</td>
-              <td className="text-gray-900">{cell(p, "annualRentStockInvestment")}</td>
-              <td className="text-gray-900">{cell(p, "annualPension")}</td>
-              <td className="font-medium text-gray-900">{cell(p, "rentOutgoings")}</td>
+              <td className="px-3 py-1.5 text-gray-900">{cell(p, "annualBudget")}</td>
+              <td className="px-3 py-1.5 text-gray-900">{cell(p, "annualRent")}</td>
+              <td className="px-3 py-1.5 text-gray-900">{cell(p, "annualRentStockInvestment")}</td>
+              <td className="px-3 py-1.5 text-gray-900">{cell(p, "annualPension")}</td>
+              <td className="px-3 py-1.5 font-medium text-gray-900">{cell(p, "rentOutgoings")}</td>
               {/* Mortgage Costs */}
-              <td className="text-gray-900">{cell(p, "annualBudget")}</td>
-              <td className="text-gray-900">{cell(p, "annualMortgagePayment")}</td>
-              <td className="text-gray-900">{cell(p, "annualOverpay")}</td>
-              <td className="text-gray-900">{cell(p, "annualMaintenance")}</td>
-              <td className="text-gray-900">{cell(p, "annualMortgageStockInvestment")}</td>
-              <td className="text-gray-900">{cell(p, "annualPension")}</td>
-              <td className="font-medium text-gray-900">{cell(p, "mortgageOutgoings")}</td>
+              <td className="px-3 py-1.5 text-gray-900">{cell(p, "annualBudget")}</td>
+              <td className="px-3 py-1.5 text-gray-900">{cell(p, "annualMortgagePayment")}</td>
+              <td className="px-3 py-1.5 text-gray-900">{cell(p, "annualOverpay")}</td>
+              <td className="px-3 py-1.5 text-gray-900">{cell(p, "annualMaintenance")}</td>
+              <td className="px-3 py-1.5 text-gray-900">{cell(p, "annualMortgageStockInvestment")}</td>
+              <td className="px-3 py-1.5 text-gray-900">{cell(p, "annualPension")}</td>
+              <td className="px-3 py-1.5 font-medium text-gray-900">{cell(p, "mortgageOutgoings")}</td>
             </tr>
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

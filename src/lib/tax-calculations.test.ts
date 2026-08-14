@@ -51,7 +51,7 @@ describe("getTaxRates", () => {
 
 describe("working hours", () => {
   it("computes annual hours and days from defaults", () => {
-    expect(hoursPerYear(DEFAULT_WORKING_HOURS)).toBe(1_950); // 37.5 × 52
+    expect(hoursPerYear(DEFAULT_WORKING_HOURS)).toBe(1_950); // 162.5 × 12
     expect(daysPerYear(DEFAULT_WORKING_HOURS)).toBe(260); // 5 × 52
   });
 });

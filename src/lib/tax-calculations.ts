@@ -75,25 +75,31 @@ export function getTaxRates(taxYear: string): TaxRates {
 export type SalaryFrequency = "hourly" | "daily" | "monthly" | "annual";
 
 export interface WorkingHours {
-  hoursPerWeek: number;
+  /** Total paid hours worked in a typical month. */
+  hoursPerMonth: number;
   daysPerWeek: number;
   weeksPerYear: number;
 }
 
 export const DEFAULT_WORKING_HOURS: WorkingHours = {
-  hoursPerWeek: 37.5,
+  hoursPerMonth: 162.5,
   daysPerWeek: 5,
   weeksPerYear: 52,
 };
 
 /** Total paid hours in a year based on the working-hours config. */
 export function hoursPerYear(h: WorkingHours): number {
-  return h.hoursPerWeek * h.weeksPerYear;
+  return h.hoursPerMonth * 12;
 }
 
 /** Total paid days in a year based on the working-hours config. */
 export function daysPerYear(h: WorkingHours): number {
   return h.daysPerWeek * h.weeksPerYear;
+}
+
+/** Total paid hours in a week (derived from monthly hours). */
+export function hoursPerWeek(h: WorkingHours): number {
+  return hoursPerYear(h) / h.weeksPerYear;
 }
 
 // ──────────────────────────────────────────────────────────────

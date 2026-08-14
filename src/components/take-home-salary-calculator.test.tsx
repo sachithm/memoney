@@ -199,18 +199,18 @@ describe("TaxBreakdownTable", () => {
     );
 
     const table = screen.getByRole("table");
-    // Default: 37.5 hrs/week → 1950 hrs/year → 35000/1950 = 17.95
+    // Default: 162.5 hrs/month → 1950 hrs/year → 35000/1950 = 17.95
     expect(findRowCells(table, "Gross Salary")[1]).toBe(
       formatCurrency(35_000 / 1_950),
     );
 
-    // Switch to 40 hrs/week → 2080 hrs/year → 35000/2080 = 16.83
-    const wh40: WorkingHours = { ...WH, hoursPerWeek: 40 };
+    // Switch to 180 hrs/month → 2160 hrs/year → 35000/2160 = 16.20
+    const whHigh: WorkingHours = { ...WH, hoursPerMonth: 180 };
     rerender(
-      <TaxBreakdownTable breakdown={breakdown} workingHours={wh40} />,
+      <TaxBreakdownTable breakdown={breakdown} workingHours={whHigh} />,
     );
     expect(findRowCells(table, "Gross Salary")[1]).toBe(
-      formatCurrency(35_000 / 2_080),
+      formatCurrency(35_000 / 2_160),
     );
   });
 });
@@ -311,30 +311,80 @@ describe("TakeHomeSalaryCalculator", () => {
     render(<TakeHomeSalaryCalculator />);
 
     // Collapsed: no working-hours inputs visible
-    expect(screen.queryByDisplayValue("37.5")).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue("162.5")).not.toBeInTheDocument();
 
     // Expand
     fireEvent.click(screen.getByRole("button", { name: /Working Hours/ }));
 
-    expect(screen.getByDisplayValue("37.5")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("162.5")).toBeInTheDocument();
     expect(screen.getByDisplayValue("5")).toBeInTheDocument();
     expect(screen.getByDisplayValue("52")).toBeInTheDocument();
   });
 
-  it("updates hourly rate when hours-per-week changes", () => {
+  it("renders the tax rules section with band rates and thresholds", () => {
+    render(<TakeHomeSalaryCalculator />);
+
+    expect(screen.getByText("Tax Rules (2026/2027)")).toBeInTheDocument();
+    // Tax-free allowance threshold (£12,570 → no decimals), shown twice
+    // (Personal Allowance and NIC primary threshold)
+    expect(screen.getAllByText("£12,570").length).toBeGreaterThanOrEqual(2);
+    // NIC upper earnings limit
+    expect(screen.getByText("£50,270")).toBeInTheDocument();
+    // Rate labels in the tax rules section
+    expect(screen.getByText("Personal Allowance")).toBeInTheDocument();
+    expect(screen.getByText("Basic rate")).toBeInTheDocument();
+    expect(screen.getByText("Higher rate")).toBeInTheDocument();
+    expect(screen.getByText("Additional rate")).toBeInTheDocument();
+    // NIC rate labels
+    expect(screen.getByText("NIC primary threshold")).toBeInTheDocument();
+    expect(screen.getByText("NIC upper limit")).toBeInTheDocument();
+    expect(screen.getByText("NIC main rate")).toBeInTheDocument();
+    expect(screen.getByText("NIC additional rate")).toBeInTheDocument();
+  });
+
+  it("updates the tax rules header when the tax year changes", () => {
+    render(<TakeHomeSalaryCalculator />);
+
+    const select = screen.getByRole("combobox");
+    fireEvent.change(select, { target: { value: "2023/2024" } });
+
+    expect(screen.getByText("Tax Rules (2023/2024)")).toBeInTheDocument();
+  });
+
+  it("switches currency frequency when frequency button is clicked", () => {
+    render(<TakeHomeSalaryCalculator />);
+
+    // Default: annual, gross = 35000
+    expect(screen.getByRole("spinbutton")).toHaveValue(35_000);
+
+    // Switch to monthly
+    fireEvent.click(screen.getByRole("button", { name: "Per Month" }));
+    // 35000 / 12 = 2916.67 (display value rounded)
+    expect(screen.getByRole("spinbutton")).toHaveValue(2916.67);
+
+    // Annual column should still show 35000
+    const table = screen.getByRole("table");
+    expect(findRowCells(table, "Gross Salary")[4]).toBe("£35,000");
+
+    // Switch back to annual
+    fireEvent.click(screen.getByRole("button", { name: "Per Year" }));
+    expect(screen.getByRole("spinbutton")).toHaveValue(35_000);
+  });
+
+  it("updates hourly rate when hours-per-month changes", () => {
     render(<TakeHomeSalaryCalculator />);
 
     // Expand working hours
     fireEvent.click(screen.getByRole("button", { name: /Working Hours/ }));
 
-    // Change hours per week to 40
-    const hoursInput = screen.getByDisplayValue("37.5");
-    fireEvent.change(hoursInput, { target: { value: "40" } });
+    // Change hours per month from 162.5 to 180
+    const hoursInput = screen.getByDisplayValue("162.5");
+    fireEvent.change(hoursInput, { target: { value: "180" } });
 
-    // Hourly gross should change: 35000 / (40 × 52) = 35000 / 2080 ≈ 16.83
+    // Hourly gross should change: 35000 / (180 × 12) = 35000 / 2160 ≈ 16.20
     const table = screen.getByRole("table");
     expect(findRowCells(table, "Gross Salary")[1]).toBe(
-      formatCurrency(35_000 / (40 * 52)),
+      formatCurrency(35_000 / (180 * 12)),
     );
   });
 

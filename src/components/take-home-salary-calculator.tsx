@@ -64,10 +64,10 @@ export function TaxBreakdownTable({
 }) {
   const rowTypeClasses: Record<string, string> = {
     gross: "font-bold text-gray-900",
-    allowance: "text-green-700",
-    tax: "text-red-600",
+    allowance: "text-green-800",
+    tax: "text-red-700",
     total: "font-bold text-gray-900 border-t-2 border-gray-300",
-    takehome: "font-bold text-green-700 border-t-2 border-gray-300",
+    takehome: "font-bold text-green-800 border-t-2 border-gray-300",
   };
 
   return (
@@ -169,16 +169,14 @@ export default function TakeHomeSalaryCalculator() {
   };
 
   // ── Working-hours helpers ────────────────────────────────
-  const setHoursPerWeek = (v: number) =>
-    setWorkingHours((prev) => ({ ...prev, hoursPerWeek: v }));
+  const setHoursPerMonth = (v: number) =>
+    setWorkingHours((prev) => ({ ...prev, hoursPerMonth: v }));
   const setDaysPerWeek = (v: number) =>
     setWorkingHours((prev) => ({ ...prev, daysPerWeek: v }));
   const setWeeksPerYear = (v: number) =>
     setWorkingHours((prev) => ({ ...prev, weeksPerYear: v }));
 
-  const annualHours = Math.round(
-    workingHours.hoursPerWeek * workingHours.weeksPerYear,
-  );
+  const annualHours = Math.round(workingHours.hoursPerMonth * 12);
   const annualDays = Math.round(
     workingHours.daysPerWeek * workingHours.weeksPerYear,
   );
@@ -202,7 +200,7 @@ export default function TakeHomeSalaryCalculator() {
 
               {/* Amount */}
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-gray-800 mb-1">
                   {INPUT_LABEL[frequency]}
                 </label>
                 <input
@@ -217,7 +215,7 @@ export default function TakeHomeSalaryCalculator() {
 
               {/* Frequency selector */}
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-gray-800 mb-1">
                   Frequency
                 </label>
                 <div className="grid grid-cols-2 gap-2">
@@ -240,7 +238,7 @@ export default function TakeHomeSalaryCalculator() {
 
               {/* Tax year */}
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-gray-800 mb-1">
                   Tax Year
                 </label>
                 <select
@@ -254,6 +252,67 @@ export default function TakeHomeSalaryCalculator() {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Tax year rules — shows the bands, thresholds and rates for
+                  the selected year so the user knows what rules are applied */}
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs">
+                <div className="font-medium text-gray-800 mb-1.5">
+                  Tax Rules ({rates.taxYear})
+                </div>
+                <div className="space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-gray-700">Personal Allowance</span>
+                    <span className="text-gray-900">
+                      {formatCurrency(rates.personalAllowance)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-700">Basic rate</span>
+                    <span className="text-gray-900">
+                      {rates.basicRate * 100}% (up to{" "}
+                      {formatCurrency(rates.basicRateThreshold)})
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-700">Higher rate</span>
+                    <span className="text-gray-900">
+                      {rates.higherRate * 100}% (up to{" "}
+                      {formatCurrency(rates.higherRateThreshold)})
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-700">Additional rate</span>
+                    <span className="text-gray-900">
+                      {rates.additionalRate * 100}%
+                    </span>
+                  </div>
+                  <div className="border-t border-gray-300 my-1"></div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-700">NIC primary threshold</span>
+                    <span className="text-gray-900">
+                      {formatCurrency(rates.nicPrimaryThreshold)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-700">NIC upper limit</span>
+                    <span className="text-gray-900">
+                      {formatCurrency(rates.nicUpperEarningsLimit)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-700">NIC main rate</span>
+                    <span className="text-gray-900">
+                      {rates.nicLowerRate * 100}%
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-700">NIC additional rate</span>
+                    <span className="text-gray-900">
+                      {rates.nicUpperRate * 100}%
+                    </span>
+                  </div>
+                </div>
               </div>
 
               {/* Working hours — collapsible */}
@@ -283,17 +342,17 @@ export default function TakeHomeSalaryCalculator() {
                 {showWorkingHours && (
                   <div className="mt-3 space-y-3">
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
-                        Hours per week
+                      <label className="block text-xs font-medium text-gray-800 mb-1">
+                        Hours per month
                       </label>
                       <input
                         type="number"
                         min="1"
-                        max="168"
+                        max="500"
                         step="0.5"
-                        value={workingHours.hoursPerWeek}
+                        value={workingHours.hoursPerMonth}
                         onChange={(e) =>
-                          setHoursPerWeek(
+                          setHoursPerMonth(
                             Math.max(1, Number(e.target.value) || 0),
                           )
                         }
@@ -301,7 +360,7 @@ export default function TakeHomeSalaryCalculator() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                      <label className="block text-xs font-medium text-gray-800 mb-1">
                         Days per week
                       </label>
                       <input
@@ -319,7 +378,7 @@ export default function TakeHomeSalaryCalculator() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                      <label className="block text-xs font-medium text-gray-800 mb-1">
                         Weeks per year
                       </label>
                       <input
@@ -337,7 +396,10 @@ export default function TakeHomeSalaryCalculator() {
                       />
                     </div>
                     <div className="text-xs text-gray-600 pt-1 border-t">
-                      <div>Annual hours: {annualHours}</div>
+                      <div>
+                        Annual hours: {annualHours}{" "}
+                        (~{Math.round(annualHours / workingHours.weeksPerYear * 10) / 10}/wk)
+                      </div>
                       <div>Annual days: {annualDays}</div>
                     </div>
                   </div>
@@ -352,44 +414,44 @@ export default function TakeHomeSalaryCalculator() {
               </h2>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Gross:</span>
+                  <span className="text-gray-700">Gross:</span>
                   <span className="font-medium text-gray-900">
                     {formatCurrency(breakdown.grossAnnual)}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Income Tax:</span>
-                  <span className="font-medium text-red-600">
+                  <span className="text-gray-700">Income Tax:</span>
+                  <span className="font-medium text-red-700">
                     -{formatCurrency(breakdown.totalIncomeTax)}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">National Insurance:</span>
-                  <span className="font-medium text-red-600">
+                  <span className="text-gray-700">National Insurance:</span>
+                  <span className="font-medium text-red-700">
                     -{formatCurrency(breakdown.totalNic)}
                   </span>
                 </div>
                 <div className="flex justify-between border-t pt-2">
-                  <span className="text-gray-600">Total Deductions:</span>
-                  <span className="font-bold text-red-700">
+                  <span className="text-gray-700">Total Deductions:</span>
+                  <span className="font-bold text-red-800">
                     -{formatCurrency(breakdown.totalDeductions)}
                   </span>
                 </div>
                 <div className="flex justify-between pt-2">
-                  <span className="text-gray-600">Take-Home:</span>
-                  <span className="font-bold text-green-700">
+                  <span className="text-gray-700">Take-Home:</span>
+                  <span className="font-bold text-green-800">
                     {formatCurrency(breakdown.takeHome)}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Effective Tax Rate:</span>
-                  <span className="font-medium">
+                  <span className="text-gray-700">Effective Tax Rate:</span>
+                  <span className="font-medium text-gray-900">
                     {formatPercent(breakdown.effectiveTaxRate)}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">You Keep:</span>
-                  <span className="font-medium text-green-700">
+                  <span className="text-gray-700">You Keep:</span>
+                  <span className="font-medium text-green-800">
                     {formatPercent(breakdown.takeHomePercentage)}
                   </span>
                 </div>
