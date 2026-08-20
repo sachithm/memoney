@@ -62,6 +62,44 @@ export const AVAILABLE_TAX_YEARS: TaxRates[] = [
   { ...TAX_RATES_2026_2027, taxYear: "2023/2024" },
 ];
 
+// ──────────────────────────────────────────────────────────────
+// Student Loan plans
+// ──────────────────────────────────────────────────────────────
+
+/** UK student-loan repayment plan. */
+export interface StudentLoanPlan {
+  /** Human-readable name, e.g. "Plan 2". */
+  name: string;
+  /** Repayment percentage (e.g. 0.09 for 9%). */
+  rate: number;
+  /** Income threshold above which repayment kicks in. */
+  threshold: number;
+}
+
+/**
+ * Registered UK student-loan plans.  Thresholds are frozen at 2024/25 levels
+ * (the UK government froze thresholds until 2028/29).  "none" is a sentinel
+ * that disables the deduction entirely.
+ */
+export const STUDENT_LOAN_PLANS: Record<string, StudentLoanPlan> = {
+  none: { name: "None", rate: 0, threshold: Infinity },
+  plan1: { name: "Plan 1", rate: 0.09, threshold: 23_761 },
+  plan2: { name: "Plan 2", rate: 0.09, threshold: 27_295 },
+  plan4: { name: "Plan 4", rate: 0.09, threshold: 27_660 },
+  plan5: { name: "Plan 5", rate: 0.09, threshold: 27_660 },
+  plan7: { name: "Postgraduate (Plan 7)", rate: 0.06, threshold: 21_125 },
+};
+
+/** Calculate the student-loan repayment for a given gross income and plan. */
+export function calculateStudentLoan(
+  grossIncome: number,
+  plan: StudentLoanPlan,
+): number {
+  if (plan.rate <= 0) return 0;
+  const aboveThreshold = Math.max(0, grossIncome - plan.threshold);
+  return aboveThreshold * plan.rate;
+}
+
 /** Look up rates for a tax-year label, falling back to the latest. */
 export function getTaxRates(taxYear: string): TaxRates {
   return AVAILABLE_TAX_YEARS.find((r) => r.taxYear === taxYear) ??
@@ -148,6 +186,12 @@ export function fromAnnual(
 
 export interface TaxBreakdown {
   grossAnnual: number;
+  /** Employee pension contribution (before-tax, deducted from gross). */
+  employeePension: number;
+  /** Employer pension match (does not reduce take-home, % of gross). */
+  employerPension: number;
+  /** Taxable income after employee pension sacrifice (used for tax & NIC). */
+  taxableIncome: number;
   /** Personal allowance after taper (0% band), capped at gross. */
   taxFreeAllowance: number;
   /** Income taxed at 20% and the tax due. */
@@ -168,6 +212,11 @@ export interface TaxBreakdown {
   /** Totals. */
   totalIncomeTax: number;
   totalNic: number;
+  /** Income tax + NIC only (excludes pension & student loan). */
+  totalIncomeAndNic: number;
+  /** Student-loan repayment (based on gross, pre-pension income). */
+  studentLoan: number;
+  /** Everything deducted from gross (tax + NIC + pension + student loan). */
   totalDeductions: number;
   takeHome: number;
   /** effectiveTaxRate = totalDeductions / grossAnnual (0–1). */
@@ -177,55 +226,89 @@ export interface TaxBreakdown {
 }
 
 /**
- * Compute the full UK Income Tax + NIC breakdown for a given gross annual
- * salary using the supplied tax rates.
+ * Options for {@link calculateTaxBreakdown}.
+ */
+export interface TaxBreakdownOptions {
+  /** Employee pension percentage of gross (0–100), taken before tax. */
+  pensionRate?: number;
+  /** Employer pension match percentage of gross (0–100). */
+  employerPensionMatchRate?: number;
+  /** Student-loan plan name (must be a key of {@link STUDENT_LOAN_PLANS}). */
+  studentLoanPlan?: keyof typeof STUDENT_LOAN_PLANS;
+}
+
+/**
+ * Compute the full UK Income Tax + NIC (+ pension + student loan) breakdown for
+ * a given gross annual salary using the supplied tax rates.
+ *
+ * Optional pension and student-loan deductions can be supplied; when omitted
+ * they default to zero, producing the same result as before those features
+ * existed.
  */
 export function calculateTaxBreakdown(
   grossAnnual: number,
   rates: TaxRates,
+  options?: TaxBreakdownOptions,
 ): TaxBreakdown {
+  const pensionRate = options?.pensionRate ?? 0;
+  const employerPensionMatchRate = options?.employerPensionMatchRate ?? 0;
+  const studentLoanPlan =
+    STUDENT_LOAN_PLANS[options?.studentLoanPlan ?? "none"] ??
+    STUDENT_LOAN_PLANS.none;
+
   const gross = Math.max(0, grossAnnual);
+
+  // ── Pension (salary sacrifice) ──────────────────────────────
+  const employeePension = gross * (pensionRate / 100);
+  const employerPension = gross * (employerPensionMatchRate / 100);
+  const taxableIncome = gross - employeePension;
+
+  // ── Student loan (on gross, pre-pension) ────────────────────
+  const studentLoan = calculateStudentLoan(gross, studentLoanPlan);
 
   // ── Personal allowance with taper for high earners ──────────
   // PA is reduced by £1 for every £2 of income above the taper threshold.
+  // Taper is based on taxable income (post-pension).
   let pa = rates.personalAllowance;
-  if (gross > rates.personalAllowanceTaperThreshold) {
-    pa = Math.max(0, pa - (gross - rates.personalAllowanceTaperThreshold) / 2);
+  if (taxableIncome > rates.personalAllowanceTaperThreshold) {
+    pa = Math.max(0, pa - (taxableIncome - rates.personalAllowanceTaperThreshold) / 2);
   }
+  pa = Math.min(gross, pa);
 
-  // ── Income Tax ──────────────────────────────────────────────
+  // ── Income Tax (on taxable income) ──────────────────────────
   const paBandWidth = rates.basicRateThreshold - pa;
-  const basicRateTaxable = Math.min(Math.max(gross - pa, 0), paBandWidth);
+  const basicRateTaxable = Math.min(Math.max(taxableIncome - pa, 0), paBandWidth);
   const basicRateTax = basicRateTaxable * rates.basicRate;
 
   const higherRateTaxable = Math.min(
-    Math.max(gross - rates.basicRateThreshold, 0),
+    Math.max(taxableIncome - rates.basicRateThreshold, 0),
     rates.higherRateThreshold - rates.basicRateThreshold,
   );
   const higherRateTax = higherRateTaxable * rates.higherRate;
 
-  const additionalRateTaxable = Math.max(gross - rates.higherRateThreshold, 0);
+  const additionalRateTaxable = Math.max(taxableIncome - rates.higherRateThreshold, 0);
   const additionalRateTax = additionalRateTaxable * rates.additionalRate;
 
   const totalIncomeTax = basicRateTax + higherRateTax + additionalRateTax;
 
-  // ── National Insurance (Class 1 employee) ───────────────────
+  // ── National Insurance (Class 1 employee, on taxable income) ─
   const nicPt = rates.nicPrimaryThreshold;
   const nicUel = rates.nicUpperEarningsLimit;
 
   const nicLowerTaxable = Math.min(
-    Math.max(gross - nicPt, 0),
+    Math.max(taxableIncome - nicPt, 0),
     nicUel - nicPt,
   );
   const nicLowerTax = nicLowerTaxable * rates.nicLowerRate;
 
-  const nicUpperTaxable = Math.max(gross - nicUel, 0);
+  const nicUpperTaxable = Math.max(taxableIncome - nicUel, 0);
   const nicUpperTax = nicUpperTaxable * rates.nicUpperRate;
 
   const totalNic = nicLowerTax + nicUpperTax;
+  const totalIncomeAndNic = totalIncomeTax + totalNic;
 
   // ── Totals ──────────────────────────────────────────────────
-  const totalDeductions = totalIncomeTax + totalNic;
+  const totalDeductions = totalIncomeAndNic + employeePension + studentLoan;
   const takeHome = gross - totalDeductions;
 
   const effectiveTaxRate = gross > 0 ? totalDeductions / gross : 0;
@@ -233,7 +316,10 @@ export function calculateTaxBreakdown(
 
   return {
     grossAnnual: gross,
-    taxFreeAllowance: Math.min(gross, pa),
+    employeePension,
+    employerPension,
+    taxableIncome,
+    taxFreeAllowance: pa,
     basicRateTaxable,
     basicRateTax,
     higherRateTaxable,
@@ -246,6 +332,8 @@ export function calculateTaxBreakdown(
     nicUpperTax,
     totalIncomeTax,
     totalNic,
+    totalIncomeAndNic,
+    studentLoan,
     totalDeductions,
     takeHome,
     effectiveTaxRate,
@@ -266,7 +354,7 @@ export interface TaxTableRow {
   /** Optional taxable-amount field, shown in the label for transparency. */
   taxableKey?: keyof TaxBreakdown;
   /** Row category — drives bold / colour styling. */
-  type: "gross" | "allowance" | "tax" | "total" | "takehome";
+  type: "gross" | "allowance" | "tax" | "total" | "takehome" | "employer";
 }
 
 /**
@@ -274,13 +362,17 @@ export interface TaxTableRow {
  * `valueKey` into hour / day / month / annual columns.
  */
 export const TAX_TABLE_ROWS: TaxTableRow[] = [
-  { key: "gross",        label: "Gross Salary",               valueKey: "grossAnnual",             type: "gross" },
-  { key: "allowance",    label: "Tax-Free Allowance (0%)",    valueKey: "taxFreeAllowance",        type: "allowance" },
-  { key: "basic",        label: "Income Tax @ 20%",           valueKey: "basicRateTax",            taxableKey: "basicRateTaxable",       type: "tax" },
-  { key: "higher",       label: "Income Tax @ 40%",           valueKey: "higherRateTax",           taxableKey: "higherRateTaxable",      type: "tax" },
-  { key: "additional",   label: "Income Tax @ 45%",           valueKey: "additionalRateTax",       taxableKey: "additionalRateTaxable",  type: "tax" },
-  { key: "nic-12",       label: "National Insurance (12%)",   valueKey: "nicLowerTax",             taxableKey: "nicLowerTaxable",        type: "tax" },
-  { key: "nic-2",        label: "National Insurance (2%)",    valueKey: "nicUpperTax",             taxableKey: "nicUpperTaxable",        type: "tax" },
-  { key: "total",        label: "Total Tax & NIC",            valueKey: "totalDeductions",         type: "total" },
-  { key: "takehome",     label: "Take-Home Pay",              valueKey: "takeHome",                type: "takehome" },
+  { key: "gross",          label: "Gross Salary",               valueKey: "grossAnnual",             type: "gross" },
+  { key: "pension",        label: "Salary Sacrifice",           valueKey: "employeePension",         type: "allowance" },
+  { key: "allowance",      label: "Tax-Free Allowance (0%)",    valueKey: "taxFreeAllowance",        type: "allowance" },
+  { key: "basic",          label: "Income Tax @ 20%",           valueKey: "basicRateTax",            taxableKey: "basicRateTaxable",         type: "tax" },
+  { key: "higher",         label: "Income Tax @ 40%",           valueKey: "higherRateTax",           taxableKey: "higherRateTaxable",        type: "tax" },
+  { key: "additional",     label: "Income Tax @ 45%",           valueKey: "additionalRateTax",       taxableKey: "additionalRateTaxable",  type: "tax" },
+  { key: "nic-12",         label: "National Insurance (12%)",   valueKey: "nicLowerTax",             taxableKey: "nicLowerTaxable",          type: "tax" },
+  { key: "nic-2",          label: "National Insurance (2%)",    valueKey: "nicUpperTax",             taxableKey: "nicUpperTaxable",          type: "tax" },
+  { key: "student-loan",   label: "Student Loan",               valueKey: "studentLoan",             type: "tax" },
+  { key: "total-income-nic", label: "Total Tax & NIC",          valueKey: "totalIncomeAndNic",       type: "total" },
+  { key: "total",          label: "Total Deductions",           valueKey: "totalDeductions",         type: "total" },
+  { key: "employer",       label: "Employer Pension Match",     valueKey: "employerPension",         type: "employer" },
+  { key: "takehome",       label: "Take-Home Pay",              valueKey: "takeHome",               type: "takehome" },
 ];

@@ -4,11 +4,13 @@ import {
   AVAILABLE_TAX_YEARS,
   getTaxRates,
   calculateTaxBreakdown,
+  calculateStudentLoan,
   annualFromFrequency,
   fromAnnual,
   hoursPerYear,
   daysPerYear,
   DEFAULT_WORKING_HOURS,
+  STUDENT_LOAN_PLANS,
   TAX_TABLE_ROWS,
 } from "@/lib/tax-calculations";
 
@@ -306,21 +308,26 @@ describe("TAX_TABLE_ROWS", () => {
     const keys = TAX_TABLE_ROWS.map((r) => r.key);
     expect(keys).toEqual([
       "gross",
+      "pension",
       "allowance",
       "basic",
       "higher",
       "additional",
       "nic-12",
       "nic-2",
+      "student-loan",
+      "total-income-nic",
       "total",
+      "employer",
       "takehome",
     ]);
   });
 
-  it("marks total and take-home rows with their types", () => {
+  it("marks total, employer and take-home rows with their types", () => {
     expect(TAX_TABLE_ROWS.find((r) => r.key === "total")?.type).toBe("total");
     expect(TAX_TABLE_ROWS.find((r) => r.key === "takehome")?.type).toBe("takehome");
     expect(TAX_TABLE_ROWS.find((r) => r.key === "gross")?.type).toBe("gross");
+    expect(TAX_TABLE_ROWS.find((r) => r.key === "employer")?.type).toBe("employer");
   });
 
   it("every row's valueKey exists on TaxBreakdown", () => {
@@ -331,5 +338,174 @@ describe("TAX_TABLE_ROWS", () => {
         expect(dummy[row.taxableKey]).not.toBeUndefined();
       }
     }
+  });
+});
+
+// ──────────────────────────────────────────────────────────────
+// Student loan
+// ──────────────────────────────────────────────────────────────
+
+describe("calculateStudentLoan", () => {
+  it("returns 0 when plan has zero rate", () => {
+    expect(calculateStudentLoan(50_000, STUDENT_LOAN_PLANS.none)).toBe(0);
+  });
+
+  it("returns 0 when income is below the Plan 2 threshold", () => {
+    expect(
+      calculateStudentLoan(27_295, STUDENT_LOAN_PLANS.plan2),
+    ).toBe(0);
+  });
+
+  it("calculates 9% of income above the Plan 2 threshold", () => {
+    // 40 000 - 27 295 = 12 705 × 9% = 1 143.45
+    expect(
+      calculateStudentLoan(40_000, STUDENT_LOAN_PLANS.plan2),
+    ).toBeCloseTo(1_143.45, 2);
+  });
+
+  it("calculates 6% for postgraduate (Plan 7) loans", () => {
+    // 40 000 - 21 125 = 18 875 × 6% = 1 132.50
+    expect(
+      calculateStudentLoan(40_000, STUDENT_LOAN_PLANS.plan7),
+    ).toBeCloseTo(1_132.5, 2);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────
+// Pension & student loan integration
+// ──────────────────────────────────────────────────────────────
+
+describe("calculateTaxBreakdown — pension sacrifice", () => {
+  const baseBreakdown = calculateTaxBreakdown(50_000, RATES);
+
+  it("defaults to zero pension when no options given", () => {
+    expect(baseBreakdown.employeePension).toBe(0);
+    expect(baseBreakdown.employerPension).toBe(0);
+    expect(baseBreakdown.taxableIncome).toBe(50_000);
+    expect(baseBreakdown.studentLoan).toBe(0);
+  });
+
+  it("reduces taxable income by the employee pension amount", () => {
+    // 5% of 50 000 = 2 500 → taxable = 47 500
+    const b = calculateTaxBreakdown(50_000, RATES, { pensionRate: 5 });
+    expect(b.employeePension).toBe(2_500);
+    expect(b.taxableIncome).toBe(47_500);
+  });
+
+  it("reduces income tax when pension is contributed", () => {
+    const b = calculateTaxBreakdown(50_000, RATES, { pensionRate: 5 });
+
+    // Taxable income = 47 500, PA = 12 570
+    // Basic rate taxable = 47 500 - 12 570 = 34 930
+    expect(b.taxableIncome).toBe(47_500);
+    expect(b.taxFreeAllowance).toBe(12_570);
+    expect(b.basicRateTaxable).toBe(34_930);
+    expect(b.basicRateTax).toBeCloseTo(34_930 * 0.2, 2);
+
+    // Total tax should be lower than without pension (50k)
+    expect(b.totalIncomeTax).toBeLessThan(baseBreakdown.totalIncomeTax);
+  });
+
+  it("reduces NIC when pension is contributed", () => {
+    const b = calculateTaxBreakdown(50_000, RATES, { pensionRate: 5 });
+
+    // NIC on 47 500: (47 500 - 12 570) × 12% = 34 930 × 0.12 = 4 191.60
+    expect(b.nicLowerTaxable).toBe(34_930);
+    expect(b.nicLowerTax).toBeCloseTo(4_191.6, 2);
+    expect(b.totalNic).toBeCloseTo(4_191.6, 2);
+    expect(b.totalNic).toBeLessThan(baseBreakdown.totalNic);
+  });
+
+  it("calculates employer match as a separate field", () => {
+    const b = calculateTaxBreakdown(50_000, RATES, {
+      pensionRate: 5,
+      employerPensionMatchRate: 3,
+    });
+    expect(b.employeePension).toBe(2_500);
+    expect(b.employerPension).toBe(1_500);
+    expect(b.totalIncomeAndNic).toBe(b.totalIncomeTax + b.totalNic);
+  });
+
+  it("employer match does NOT reduce take-home pay", () => {
+    const bNoMatch = calculateTaxBreakdown(50_000, RATES, { pensionRate: 5 });
+    const bWithMatch = calculateTaxBreakdown(50_000, RATES, {
+      pensionRate: 5,
+      employerPensionMatchRate: 3,
+    });
+    // Same take-home because employer match doesn't deduct from pay
+    expect(bWithMatch.takeHome).toBe(bNoMatch.takeHome);
+    expect(bWithMatch.totalDeductions).toBe(bNoMatch.totalDeductions);
+  });
+
+  it("total deductions = tax + NIC + pension + student loan", () => {
+    const b = calculateTaxBreakdown(60_000, RATES, {
+      pensionRate: 5,
+      studentLoanPlan: "plan2",
+    });
+    expect(b.totalDeductions).toBeCloseTo(
+      b.totalIncomeAndNic + b.employeePension + b.studentLoan,
+      2,
+    );
+  });
+});
+
+describe("calculateTaxBreakdown — student loan", () => {
+  it("shows zero student loan when plan is none", () => {
+    const b = calculateTaxBreakdown(50_000, RATES, { studentLoanPlan: "none" });
+    expect(b.studentLoan).toBe(0);
+  });
+
+  it("calculates Plan 2 student loan on gross (pre-pension) income", () => {
+    // Gross = 50 000, pension = 5% → 2 500
+    // Student loan is on gross 50 000: (50 000 - 27 295) × 9% = 2 053.45
+    const b = calculateTaxBreakdown(50_000, RATES, {
+      pensionRate: 5,
+      studentLoanPlan: "plan2",
+    });
+    expect(b.studentLoan).toBeCloseTo(2_043.45, 2);
+  });
+
+  it("reduces take-home by the student loan amount", () => {
+    const base = calculateTaxBreakdown(50_000, RATES);
+    const withLoan = calculateTaxBreakdown(50_000, RATES, {
+      studentLoanPlan: "plan2",
+    });
+    expect(withLoan.studentLoan).toBeCloseTo((50_000 - 27_295) * 0.09, 2);
+    expect(withLoan.takeHome).toBeCloseTo(
+      base.takeHome - withLoan.studentLoan,
+      2,
+    );
+  });
+
+  it("shows zero student loan below the threshold", () => {
+    const b = calculateTaxBreakdown(25_000, RATES, { studentLoanPlan: "plan2" });
+    expect(b.studentLoan).toBe(0);
+  });
+});
+
+describe("calculateTaxBreakdown — pension + student loan combined", () => {
+  it("applies pension tax relief AND student loan simultaneously", () => {
+    const b = calculateTaxBreakdown(60_000, RATES, {
+      pensionRate: 10,
+      employerPensionMatchRate: 5,
+      studentLoanPlan: "plan2",
+    });
+
+    // Pension
+    expect(b.employeePension).toBe(6_000);
+    expect(b.employerPension).toBe(3_000);
+    expect(b.taxableIncome).toBe(54_000);
+
+    // Student loan on gross (60 000): (60 000 - 27 295) × 9% = 2 943.45
+    expect(b.studentLoan).toBeCloseTo(2_943.45, 2);
+
+    // totalDeductions = incomeAndNic + employeePension + studentLoan
+    expect(b.totalDeductions).toBeCloseTo(
+      b.totalIncomeAndNic + 6_000 + b.studentLoan,
+      2,
+    );
+
+    // takeHome = gross - totalDeductions
+    expect(b.takeHome).toBeCloseTo(60_000 - b.totalDeductions, 2);
   });
 });

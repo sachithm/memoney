@@ -396,78 +396,79 @@ export function RentVsBuyResultsTable({
         Year-by-Year Breakdown
       </h2>
       <p className="text-xs text-gray-600 mb-4">
-        Scroll horizontally for the full breakdown. Bold figures are totals
-        (e.g. Rent NW = Stocks + Pension; Outgoings = Rent + Investing +
+        Scroll horizontally for the full breakdown and vertically to browse
+        years. The header stays fixed in both directions. Bold figures are
+        totals (e.g. Rent NW = Stocks + Pension; Outgoings = Rent + Investing +
         Pension). Budget columns show the annual housing budget, which grows
         with the Budget Increase Rate.
       </p>
-      <div className="overflow-x-auto">
+      <div className="max-h-[80vh] overflow-x-auto overflow-y-auto">
         <table className="min-w-full divide-y divide-gray-200 text-xs text-gray-900 whitespace-nowrap">
           <thead>
           {/* Group header row */}
           <tr>
             <th
               rowSpan={2}
-              className="sticky left-0 z-20 bg-gray-100 px-3 py-1.5 text-left font-medium text-gray-900 shadow-[2px_0_4px_rgba(0,0,0,0.05)]
+              className="sticky left-0 top-0 z-40 bg-gray-100 px-3 py-1.5 text-left font-medium text-gray-900 shadow-[2px_0_4px_rgba(0,0,0,0.05)]
               "
             >
               Year
             </th>
-            <th colSpan={3} className="bg-blue-50 px-3 py-1.5 text-left text-gray-900">
+            <th colSpan={3} className="sticky top-0 z-30 bg-blue-50 px-3 py-1.5 text-left text-gray-900">
               Rent + Invest (NW)
             </th>
-            <th colSpan={6} className="bg-green-50 px-3 py-1.5 text-left text-gray-900">
+            <th colSpan={6} className="sticky top-0 z-30 bg-green-50 px-3 py-1.5 text-left text-gray-900">
               Mortgage + Invest (NW)
             </th>
-            <th rowSpan={2} className="bg-gray-100 px-3 py-1.5 text-gray-900">
+            <th rowSpan={2} className="sticky top-0 z-30 bg-gray-100 px-3 py-1.5 text-gray-900">
               Difference
             </th>
-            <th colSpan={7} className="bg-purple-50 px-3 py-1.5 text-left text-gray-900">
+            <th colSpan={7} className="sticky top-0 z-30 bg-purple-50 px-3 py-1.5 text-left text-gray-900">
               Change (YoY)
             </th>
-            <th colSpan={5} className="bg-orange-50 px-3 py-1.5 text-left text-gray-900">
+            <th colSpan={5} className="sticky top-0 z-30 bg-orange-50 px-3 py-1.5 text-left text-gray-900">
               Rent Costs
             </th>
-            <th colSpan={7} className="bg-teal-50 px-3 py-1.5 text-left text-gray-900">
+            <th colSpan={7} className="sticky top-0 z-30 bg-teal-50 px-3 py-1.5 text-left text-gray-900">
               Mortgage Costs
             </th>
           </tr>
           {/* Detail header row */}
           <tr>
-            <th className="bg-blue-50 px-3 py-1.5 text-left text-gray-900">NW</th>
-            <th className="bg-blue-50 px-3 py-1.5 text-left text-gray-900">Stocks</th>
-            <th className="bg-blue-50 px-3 py-1.5 text-left text-gray-900">Pension</th>
-            <th className="bg-green-50 px-3 py-1.5 text-left text-gray-900">NW</th>
-            <th className="bg-green-50 px-3 py-1.5 text-left text-gray-900">Property</th>
-            <th className="bg-green-50 px-3 py-1.5 text-left text-gray-900">Balance</th>
-            <th className="bg-green-50 px-3 py-1.5 text-left text-gray-900">Home Equity</th>
-            <th className="bg-green-50 px-3 py-1.5 text-left text-gray-900">Stocks</th>
-            <th className="bg-green-50 px-3 py-1.5 text-left text-gray-900">Pension</th>
-            <th className="bg-purple-50 px-3 py-1.5 text-left text-gray-900">Rent Δ</th>
-            <th className="bg-purple-50 px-3 py-1.5 text-left text-gray-900">Mtg Δ</th>
-            <th className="bg-purple-50 px-3 py-1.5 text-left text-gray-900">Appreciation</th>
-            <th className="bg-purple-50 px-3 py-1.5 text-left text-gray-900">Principal</th>
-            <th className="bg-purple-50 px-3 py-1.5 text-left text-gray-900">Interest</th>
-            <th className="bg-purple-50 px-3 py-1.5 text-left text-gray-900">Stock Δ</th>
-            <th className="bg-purple-50 px-3 py-1.5 text-left text-gray-900">Pens Δ</th>
-            <th className="bg-orange-50 px-3 py-1.5 text-left text-gray-900">Budget</th>
-            <th className="bg-orange-50 px-3 py-1.5 text-left text-gray-900">Rent</th>
-            <th className="bg-orange-50 px-3 py-1.5 text-left text-gray-900">Invest</th>
-            <th className="bg-orange-50 px-3 py-1.5 text-left text-gray-900">Pension</th>
-            <th className="bg-orange-50 px-3 py-1.5 text-left text-gray-900">Outgoings</th>
-            <th className="bg-teal-50 px-3 py-1.5 text-left text-gray-900">Budget</th>
-            <th className="bg-teal-50 px-3 py-1.5 text-left text-gray-900">Payment</th>
-            <th className="bg-teal-50 px-3 py-1.5 text-left text-gray-900">Overpay</th>
-            <th className="bg-teal-50 px-3 py-1.5 text-left text-gray-900">Maintenance</th>
-            <th className="bg-teal-50 px-3 py-1.5 text-left text-gray-900">Invest</th>
-            <th className="bg-teal-50 px-3 py-1.5 text-left text-gray-900">Pension</th>
-            <th className="bg-teal-50 px-3 py-1.5 text-left text-gray-900">Outgoings</th>
+            <th className="sticky top-[28px] z-20 bg-blue-50 px-3 py-1.5 text-left text-gray-900">NW</th>
+            <th className="sticky top-[28px] z-20 bg-blue-50 px-3 py-1.5 text-left text-gray-900">Stocks</th>
+            <th className="sticky top-[28px] z-20 bg-blue-50 px-3 py-1.5 text-left text-gray-900">Pension</th>
+            <th className="sticky top-[28px] z-20 bg-green-50 px-3 py-1.5 text-left text-gray-900">NW</th>
+            <th className="sticky top-[28px] z-20 bg-green-50 px-3 py-1.5 text-left text-gray-900">Property</th>
+            <th className="sticky top-[28px] z-20 bg-green-50 px-3 py-1.5 text-left text-gray-900">Balance</th>
+            <th className="sticky top-[28px] z-20 bg-green-50 px-3 py-1.5 text-left text-gray-900">Home Equity</th>
+            <th className="sticky top-[28px] z-20 bg-green-50 px-3 py-1.5 text-left text-gray-900">Stocks</th>
+            <th className="sticky top-[28px] z-20 bg-green-50 px-3 py-1.5 text-left text-gray-900">Pension</th>
+            <th className="sticky top-[28px] z-20 bg-purple-50 px-3 py-1.5 text-left text-gray-900">Rent Δ</th>
+            <th className="sticky top-[28px] z-20 bg-purple-50 px-3 py-1.5 text-left text-gray-900">Mtg Δ</th>
+            <th className="sticky top-[28px] z-20 bg-purple-50 px-3 py-1.5 text-left text-gray-900">Appreciation</th>
+            <th className="sticky top-[28px] z-20 bg-purple-50 px-3 py-1.5 text-left text-gray-900">Principal</th>
+            <th className="sticky top-[28px] z-20 bg-purple-50 px-3 py-1.5 text-left text-gray-900">Interest</th>
+            <th className="sticky top-[28px] z-20 bg-purple-50 px-3 py-1.5 text-left text-gray-900">Stock Δ</th>
+            <th className="sticky top-[28px] z-20 bg-purple-50 px-3 py-1.5 text-left text-gray-900">Pens Δ</th>
+            <th className="sticky top-[28px] z-20 bg-orange-50 px-3 py-1.5 text-left text-gray-900">Budget</th>
+            <th className="sticky top-[28px] z-20 bg-orange-50 px-3 py-1.5 text-left text-gray-900">Rent</th>
+            <th className="sticky top-[28px] z-20 bg-orange-50 px-3 py-1.5 text-left text-gray-900">Invest</th>
+            <th className="sticky top-[28px] z-20 bg-orange-50 px-3 py-1.5 text-left text-gray-900">Pension</th>
+            <th className="sticky top-[28px] z-20 bg-orange-50 px-3 py-1.5 text-left text-gray-900">Outgoings</th>
+            <th className="sticky top-[28px] z-20 bg-teal-50 px-3 py-1.5 text-left text-gray-900">Budget</th>
+            <th className="sticky top-[28px] z-20 bg-teal-50 px-3 py-1.5 text-left text-gray-900">Payment</th>
+            <th className="sticky top-[28px] z-20 bg-teal-50 px-3 py-1.5 text-left text-gray-900">Overpay</th>
+            <th className="sticky top-[28px] z-20 bg-teal-50 px-3 py-1.5 text-left text-gray-900">Maintenance</th>
+            <th className="sticky top-[28px] z-20 bg-teal-50 px-3 py-1.5 text-left text-gray-900">Invest</th>
+            <th className="sticky top-[28px] z-20 bg-teal-50 px-3 py-1.5 text-left text-gray-900">Pension</th>
+            <th className="sticky top-[28px] z-20 bg-teal-50 px-3 py-1.5 text-left text-gray-900">Outgoings</th>
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
           {data.map((p) => (
             <tr key={p.year} className={p.year % 2 === 0 ? "" : "bg-gray-50"}>
-              <td className="sticky left-0 z-10 bg-white px-3 py-1.5 font-medium text-gray-900">
+              <td className="sticky left-0 top-0 z-10 bg-white px-3 py-1.5 font-medium text-gray-900">
                 {p.year}
               </td>
               {/* Rent + Invest NW */}

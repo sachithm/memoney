@@ -44,6 +44,12 @@ const TOOLS: ToolCard[] = [
       "Calculate your net pay after UK Income Tax and National Insurance. Enter your salary hourly, daily, monthly, or annually and see a full breakdown of tax-free allowance, tax bands, and deductions.",
     href: "/take-home-salary",
   },
+  {
+    title: "Country Comparer",
+    description:
+      "Compare the cost of living between two countries. Enter income, tax rate, and monthly costs to see how much you'd save each month and year, with fields that link and override per country.",
+    href: "/country-comparer",
+  },
 ];
 
 export default function Home() {

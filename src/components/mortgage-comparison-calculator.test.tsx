@@ -1,5 +1,5 @@
-import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import MortgageComparisonCalculator from "@/components/mortgage-comparison-calculator";
 
@@ -21,7 +21,24 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+// Mock next/navigation for URL param round-tripping.
+const { mockSearch } = vi.hoisted(() => ({
+  mockSearch: { params: new URLSearchParams("") },
+}));
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => mockSearch.params,
+  usePathname: () => "/mortgage-comparison",
+}));
+
 describe("MortgageComparisonCalculator component", () => {
+  let replaceStateSpy: ReturnType<typeof vi.spyOn> | undefined;
+
+  beforeEach(() => {
+    mockSearch.params = new URLSearchParams("");
+    replaceStateSpy?.mockRestore();
+    replaceStateSpy = vi.spyOn(window.history, "replaceState");
+  });
+
   it("renders with default values", () => {
     render(<MortgageComparisonCalculator />);
 
@@ -189,5 +206,97 @@ describe("MortgageComparisonCalculator component", () => {
       el.tagName.toLowerCase() === "label",
     );
     expect(labelElements.length).toBe(1);
+  });
+
+  // ── URL parameter round-tripping ──
+
+  it("loads configuration from URL query params on mount", () => {
+    mockSearch.params.set("initialInvestment", "50000");
+    mockSearch.params.set("mortgageRate", "6");
+    mockSearch.params.set("appreciationRate", "3");
+    mockSearch.params.set("years", "20");
+    mockSearch.params.set("paymentMode", "fix-term");
+    mockSearch.params.set("showStockComparison", "0");
+
+    render(<MortgageComparisonCalculator />);
+
+    expect(screen.getByDisplayValue("50000")).toBeInTheDocument();
+    // "6" appears on both mortgage rate number input and slider
+    expect(screen.getAllByDisplayValue("6").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByDisplayValue("20")).toBeInTheDocument();
+    // Fix Term mode should be active
+    expect(
+      screen.getByRole("button", { name: "Fix Term" }),
+    ).toHaveClass("border-blue-500");
+    // Stock comparison should be hidden
+    expect(
+      screen.queryByText("Stock Market Annual Return (%)"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("writes the configuration to the URL as inputs change", async () => {
+    render(<MortgageComparisonCalculator />);
+
+    fireEvent.change(screen.getByDisplayValue("30000"), {
+      target: { value: "40000" },
+    });
+
+    await waitFor(() => {
+      expect(replaceStateSpy).toHaveBeenLastCalledWith(
+        null,
+        "",
+        expect.stringContaining("initialInvestment=40000"),
+      );
+    });
+    expect(replaceStateSpy).toHaveBeenLastCalledWith(
+      null,
+      "",
+      expect.stringContaining("/mortgage-comparison?"),
+    );
+  });
+
+  it("writes monthlyPayment as 'standard' when reset", async () => {
+    render(<MortgageComparisonCalculator />);
+
+    // Click "Reset to standard" — this should write monthlyPayment=standard to URL
+    fireEvent.click(screen.getByRole("button", { name: "Reset to standard" }));
+
+    await waitFor(() => {
+      expect(replaceStateSpy).toHaveBeenLastCalledWith(
+        null,
+        "",
+        expect.stringContaining("monthlyPayment=standard"),
+      );
+    });
+  });
+
+  it("writes showStockComparison to the URL when toggled", async () => {
+    render(<MortgageComparisonCalculator />);
+
+    // Toggle off
+    fireEvent.click(screen.getByRole("switch"));
+
+    await waitFor(() => {
+      expect(replaceStateSpy).toHaveBeenLastCalledWith(
+        null,
+        "",
+        expect.stringContaining("showStockComparison=0"),
+      );
+    });
+  });
+
+  it("ignores invalid URL params and falls back to defaults", () => {
+    mockSearch.params.set("initialInvestment", "not-a-number");
+    mockSearch.params.set("mortgageRate", "abc");
+    mockSearch.params.set("years", "invalid");
+    mockSearch.params.set("paymentMode", "nonsense");
+    mockSearch.params.set("monthlyPayment", "not-a-number");
+
+    render(<MortgageComparisonCalculator />);
+
+    // Defaults are used
+    expect(screen.getByDisplayValue("30000")).toBeInTheDocument();
+    expect(screen.getAllByDisplayValue("5").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByDisplayValue("30")).toBeInTheDocument();
   });
 });

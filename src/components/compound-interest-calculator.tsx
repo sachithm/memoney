@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams, usePathname } from "next/navigation";
 import Link from "next/link";
 import {
   ResponsiveContainer,
@@ -12,10 +13,29 @@ import {
   Area,
 } from "recharts";
 import { formatCurrency, currencyTick, yearTick } from "@/lib/utils";
-import PageHeader from "@/components/ui/page-header";
 
 const INPUT_CLASSES =
   "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500";
+
+// ──────────────────────────────────────────────────────────────
+// URL parameter helpers
+// ──────────────────────────────────────────────────────────────
+
+/** Read a number from `searchParams`, falling back to `fallback` (clamped to `min`). */
+function readParam(
+  searchParams: { get(name: string): string | null } | null,
+  key: string,
+  fallback: number,
+  min = 0,
+) {
+  const raw = searchParams?.get(key);
+  if (raw == null) return fallback;
+  const value = Number(raw);
+  return Number.isFinite(value) ? Math.max(min, value) : fallback;
+}
+
+/** Round to 2 decimals so the URL stays compact and human-readable. */
+const toParam = (value: number) => String(Math.round(value * 100) / 100);
 
 type Frequency = "monthly" | "annual";
 
@@ -105,12 +125,25 @@ function CustomTooltip({
 }
 
 export default function CompoundInterestCalculator() {
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+
   // ── Inputs ───────────────────────────────────────────
-  const [initialInvestment, setInitialInvestment] = useState(10000);
-  const [contribution, setContribution] = useState(500);
-  const [frequency, setFrequency] = useState<Frequency>("monthly");
-  const [annualRate, setAnnualRate] = useState(7);
-  const [years, setYears] = useState(30);
+  const [initialInvestment, setInitialInvestment] = useState(() =>
+    readParam(searchParams, "initialInvestment", 10_000),
+  );
+  const [contribution, setContribution] = useState(() =>
+    readParam(searchParams, "contribution", 500),
+  );
+  const [frequency, setFrequency] = useState<Frequency>(
+    () => (searchParams?.get("frequency") as Frequency) ?? "monthly",
+  );
+  const [annualRate, setAnnualRate] = useState(() =>
+    readParam(searchParams, "annualRate", 7),
+  );
+  const [years, setYears] = useState(() =>
+    readParam(searchParams, "years", 30, 1),
+  );
 
   // ── Calculation ──────────────────────────────────────
   const data: DataPoint[] = useMemo(() => {
@@ -135,6 +168,21 @@ export default function CompoundInterestCalculator() {
 
   const final = data[data.length - 1];
   const maxTotal = Math.max(...data.map((d) => d.total), 1);
+
+  // ── Keep URL in sync with inputs ──
+  useEffect(() => {
+    const params = new URLSearchParams();
+    params.set("initialInvestment", toParam(initialInvestment));
+    params.set("contribution", toParam(contribution));
+    params.set("frequency", frequency);
+    params.set("annualRate", toParam(annualRate));
+    params.set("years", toParam(years));
+    window.history.replaceState(
+      null,
+      "",
+      `${pathname}?${params.toString()}`,
+    );
+  }, [initialInvestment, contribution, frequency, annualRate, years, pathname]);
 
   // ── Render ───────────────────────────────────────────
 

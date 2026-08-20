@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams, usePathname } from "next/navigation";
 import Link from "next/link";
 import {
   ResponsiveContainer,
@@ -26,6 +27,26 @@ import {
 
 const INPUT_CLASSES =
   "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500";
+
+// ──────────────────────────────────────────────────────────────
+// URL parameter helpers
+// ──────────────────────────────────────────────────────────────
+
+/** Read a number from `searchParams`, falling back to `fallback` (clamped to `min`). */
+function readParam(
+  searchParams: { get(name: string): string | null } | null,
+  key: string,
+  fallback: number,
+  min = 0,
+) {
+  const raw = searchParams?.get(key);
+  if (raw == null) return fallback;
+  const value = Number(raw);
+  return Number.isFinite(value) ? Math.max(min, value) : fallback;
+}
+
+/** Round to 2 decimals so the URL stays compact and human-readable. */
+const toParam = (value: number) => String(Math.round(value * 100) / 100);
 
 type PaymentMode = "fix-deposit" | "fix-term";
 
@@ -86,16 +107,39 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
 }
 
 export default function MortgageComparisonCalculator() {
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+
   // ── Inputs ───────────────────────────────────────────
-  const [paymentMode, setPaymentMode] = useState<PaymentMode>("fix-deposit");
-  const [initialInvestment, setInitialInvestment] = useState(30000);
-  const [mortgageMultiplier, setMortgageMultiplier] = useState(10);
-  const [mortgageRate, setMortgageRate] = useState(5);
-  const [appreciationRate, setAppreciationRate] = useState(4);
-  const [years, setYears] = useState(30);
-  const [monthlyPayment, setMonthlyPayment] = useState<number | null>(null);
-  const [stockReturnRate, setStockReturnRate] = useState(7);
-  const [showStockComparison, setShowStockComparison] = useState(true);
+  const [paymentMode, setPaymentMode] = useState<PaymentMode>(
+    () =>
+      (searchParams?.get("paymentMode") as PaymentMode) ?? "fix-deposit",
+  );
+  const [initialInvestment, setInitialInvestment] = useState(() =>
+    readParam(searchParams, "initialInvestment", 30_000),
+  );
+  const [mortgageMultiplier, setMortgageMultiplier] = useState(() =>
+    readParam(searchParams, "mortgageMultiplier", 10, 1),
+  );
+  const [mortgageRate, setMortgageRate] = useState(() =>
+    readParam(searchParams, "mortgageRate", 5),
+  );
+  const [appreciationRate, setAppreciationRate] = useState(() =>
+    readParam(searchParams, "appreciationRate", 4),
+  );
+  const [years, setYears] = useState(() =>
+    readParam(searchParams, "years", 30, 1),
+  );
+  const [monthlyPayment, setMonthlyPayment] = useState<number | null>(
+    () =>
+      readParam(searchParams, "monthlyPayment", Number.NaN) || null,
+  );
+  const [stockReturnRate, setStockReturnRate] = useState(() =>
+    readParam(searchParams, "stockReturnRate", 7),
+  );
+  const [showStockComparison, setShowStockComparison] = useState(() =>
+    searchParams?.get("showStockComparison") !== "0",
+  );
 
   // ── Derived values ───────────────────────────────────
   const deposit = initialInvestment;
@@ -208,6 +252,36 @@ export default function MortgageComparisonCalculator() {
   const difference = showStockComparison
     ? finalNetEquity - finalStockValue
     : 0;
+
+  // ── Keep URL in sync with inputs ──
+  useEffect(() => {
+    const params = new URLSearchParams();
+    params.set("paymentMode", paymentMode);
+    params.set("initialInvestment", toParam(initialInvestment));
+    params.set("mortgageMultiplier", toParam(mortgageMultiplier));
+    params.set("mortgageRate", toParam(mortgageRate));
+    params.set("appreciationRate", toParam(appreciationRate));
+    params.set("years", toParam(years));
+    params.set("monthlyPayment", monthlyPayment !== null ? toParam(monthlyPayment) : "standard");
+    params.set("stockReturnRate", toParam(stockReturnRate));
+    params.set("showStockComparison", showStockComparison ? "1" : "0");
+    window.history.replaceState(
+      null,
+      "",
+      `${pathname}?${params.toString()}`,
+    );
+  }, [
+    paymentMode,
+    initialInvestment,
+    mortgageMultiplier,
+    mortgageRate,
+    appreciationRate,
+    years,
+    monthlyPayment,
+    stockReturnRate,
+    showStockComparison,
+    pathname,
+  ]);
 
   // ── Render ───────────────────────────────────────────
 

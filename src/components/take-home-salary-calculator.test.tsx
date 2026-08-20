@@ -1,5 +1,5 @@
-import { render, screen, fireEvent, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { render, screen, fireEvent, within, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import TakeHomeSalaryCalculator, {
   TaxBreakdownTable,
 } from "@/components/take-home-salary-calculator";
@@ -14,6 +14,16 @@ import {
   type TaxBreakdown,
 } from "@/lib/tax-calculations";
 import { formatCurrency } from "@/lib/utils";
+
+// Mock next/navigation: the calculator reads its initial state from the URL and
+// writes the current configuration back to the address bar on every change.
+const { mockSearch } = vi.hoisted(() => ({
+  mockSearch: { params: new URLSearchParams("") },
+}));
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => mockSearch.params,
+  usePathname: () => "/take-home-salary",
+}));
 
 const WH = DEFAULT_WORKING_HOURS;
 
@@ -53,9 +63,9 @@ describe("TaxBreakdownTable", () => {
     ]);
   });
 
-  it("renders 9 data rows plus 1 header row (10 total)", () => {
+  it("renders 13 data rows plus 1 header row (14 total)", () => {
     render(<TaxBreakdownTable breakdown={breakdown35k} workingHours={WH} />);
-    expect(screen.getAllByRole("row")).toHaveLength(10);
+    expect(screen.getAllByRole("row")).toHaveLength(14);
   });
 
   it("renders all expected row labels", () => {
@@ -63,13 +73,17 @@ describe("TaxBreakdownTable", () => {
     const table = screen.getByRole("table");
     const labels = [
       "Gross Salary",
+      "Salary Sacrifice",
       "Tax-Free Allowance",
       "Income Tax @ 20%",
       "Income Tax @ 40%",
       "Income Tax @ 45%",
       "National Insurance (12%)",
       "National Insurance (2%)",
+      "Student Loan",
       "Total Tax & NIC",
+      "Total Deductions",
+      "Employer Pension Match",
       "Take-Home Pay",
     ];
     labels.forEach((label) => {
@@ -220,11 +234,19 @@ describe("TaxBreakdownTable", () => {
 // ──────────────────────────────────────────────────────────────
 
 describe("TakeHomeSalaryCalculator", () => {
+  let replaceStateSpy: ReturnType<typeof vi.spyOn> | undefined;
+
+  beforeEach(() => {
+    mockSearch.params = new URLSearchParams("");
+    replaceStateSpy?.mockRestore();
+    replaceStateSpy = vi.spyOn(window.history, "replaceState");
+  });
+
   it("renders with default salary £35,000", () => {
     render(<TakeHomeSalaryCalculator />);
 
     // The salary input should show 35000 (annual)
-    expect(screen.getByRole("spinbutton")).toHaveValue(35_000);
+    expect(screen.getByLabelText("Annual Salary (£)")).toHaveValue(35_000);
   });
 
   it("shows correct table values for default £35,000", () => {
@@ -267,7 +289,7 @@ describe("TakeHomeSalaryCalculator", () => {
   it("updates the table when the salary input changes", () => {
     render(<TakeHomeSalaryCalculator />);
 
-    const salaryInput = screen.getByRole("spinbutton");
+    const salaryInput = screen.getByLabelText("Annual Salary (£)");
     fireEvent.change(salaryInput, { target: { value: "60000" } });
 
     const table = screen.getByRole("table");
@@ -285,7 +307,7 @@ describe("TakeHomeSalaryCalculator", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Per Month" }));
 
-    const salaryInput = screen.getByRole("spinbutton");
+    const salaryInput = screen.getByLabelText("Monthly Salary (£)");
     // 35000 / 12 = 2916.67
     expect(salaryInput).toHaveValue(2916.67);
 
@@ -299,7 +321,7 @@ describe("TakeHomeSalaryCalculator", () => {
 
     // Switch to monthly and enter £5,000/month → £60,000 annual
     fireEvent.click(screen.getByRole("button", { name: "Per Month" }));
-    fireEvent.change(screen.getByRole("spinbutton"), {
+    fireEvent.change(screen.getByLabelText("Monthly Salary (£)"), {
       target: { value: "5000" },
     });
 
@@ -345,7 +367,7 @@ describe("TakeHomeSalaryCalculator", () => {
   it("updates the tax rules header when the tax year changes", () => {
     render(<TakeHomeSalaryCalculator />);
 
-    const select = screen.getByRole("combobox");
+    const select = screen.getByLabelText("Tax Year");
     fireEvent.change(select, { target: { value: "2023/2024" } });
 
     expect(screen.getByText("Tax Rules (2023/2024)")).toBeInTheDocument();
@@ -354,13 +376,15 @@ describe("TakeHomeSalaryCalculator", () => {
   it("switches currency frequency when frequency button is clicked", () => {
     render(<TakeHomeSalaryCalculator />);
 
+    const salaryInput = screen.getByLabelText("Annual Salary (£)");
+
     // Default: annual, gross = 35000
-    expect(screen.getByRole("spinbutton")).toHaveValue(35_000);
+    expect(salaryInput).toHaveValue(35_000);
 
     // Switch to monthly
     fireEvent.click(screen.getByRole("button", { name: "Per Month" }));
     // 35000 / 12 = 2916.67 (display value rounded)
-    expect(screen.getByRole("spinbutton")).toHaveValue(2916.67);
+    expect(screen.getByLabelText("Monthly Salary (£)")).toHaveValue(2916.67);
 
     // Annual column should still show 35000
     const table = screen.getByRole("table");
@@ -368,7 +392,7 @@ describe("TakeHomeSalaryCalculator", () => {
 
     // Switch back to annual
     fireEvent.click(screen.getByRole("button", { name: "Per Year" }));
-    expect(screen.getByRole("spinbutton")).toHaveValue(35_000);
+    expect(salaryInput).toHaveValue(35_000);
   });
 
   it("updates hourly rate when hours-per-month changes", () => {
@@ -394,7 +418,7 @@ describe("TakeHomeSalaryCalculator", () => {
     // Initially 2026/2027
     expect(screen.getByText(/Based on 2026\/2027/)).toBeInTheDocument();
 
-    fireEvent.change(screen.getByRole("combobox"), {
+    fireEvent.change(screen.getByLabelText("Tax Year"), {
       target: { value: "2024/2025" },
     });
 
@@ -404,7 +428,7 @@ describe("TakeHomeSalaryCalculator", () => {
   it("renders all tax year options in the selector", () => {
     render(<TakeHomeSalaryCalculator />);
 
-    const select = screen.getByRole("combobox");
+    const select = screen.getByLabelText("Tax Year");
     const options = Array.from(select.querySelectorAll("option"));
     expect(options.map((o) => o.textContent)).toEqual(
       AVAILABLE_TAX_YEARS.map((y) => `UK ${y.taxYear}`),
@@ -414,7 +438,7 @@ describe("TakeHomeSalaryCalculator", () => {
   it("shows £0.00 values when salary is zero", () => {
     render(<TakeHomeSalaryCalculator />);
 
-    fireEvent.change(screen.getByRole("spinbutton"), {
+    fireEvent.change(screen.getByLabelText("Annual Salary (£)"), {
       target: { value: "0" },
     });
 
@@ -426,7 +450,7 @@ describe("TakeHomeSalaryCalculator", () => {
 
   it("shows higher-rate tax for a £60,000 salary", () => {
     render(<TakeHomeSalaryCalculator />);
-    fireEvent.change(screen.getByRole("spinbutton"), {
+    fireEvent.change(screen.getByLabelText("Annual Salary (£)"), {
       target: { value: "60000" },
     });
 
@@ -445,6 +469,364 @@ describe("TakeHomeSalaryCalculator", () => {
     render(<TakeHomeSalaryCalculator />);
     expect(
       screen.getByRole("heading", { name: "Take Home Salary Calculator" }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders pension and student loan input controls", () => {
+    render(<TakeHomeSalaryCalculator />);
+
+    // Pension input
+    expect(screen.getByLabelText("Pension Contribution (%)")).toBeInTheDocument();
+    // Employer match input
+    expect(screen.getByLabelText("Employer Match (%)")).toBeInTheDocument();
+    // Student loan select
+    expect(screen.getByLabelText("Student Loan Plan")).toBeInTheDocument();
+  });
+
+  it("shows Salary Sacrifice row in the table with the correct value", () => {
+    render(<TakeHomeSalaryCalculator />);
+
+    const table = screen.getByRole("table");
+
+    // By default, pension = 0, so Salary Sacrifice should show £0.00
+    expect(findRowCells(table, "Salary Sacrifice")[4]).toBe("£0.00");
+    expect(findRowCells(table, "Student Loan")[4]).toBe("£0.00");
+    expect(findRowCells(table, "Employer Pension Match")[4]).toBe("£0.00");
+  });
+
+  it("updates take-home when a pension rate is entered", () => {
+    render(<TakeHomeSalaryCalculator />);
+
+    // Enter 5% pension
+    fireEvent.change(screen.getByLabelText("Pension Contribution (%)"), {
+      target: { value: "5" },
+    });
+
+    const table = screen.getByRole("table");
+    const breakdown = calculateTaxBreakdown(35_000, TAX_RATES_2026_2027, {
+      pensionRate: 5,
+    });
+
+    // Salary Sacrifice should show 5% of 35 000 = 1 750
+    expect(findRowCells(table, "Salary Sacrifice")[4]).toBe(
+      formatCurrency(breakdown.employeePension),
+    );
+    // Take-home should reflect reduced tax
+    expect(findRowCells(table, "Take-Home Pay")[4]).toBe(
+      formatCurrency(breakdown.takeHome),
+    );
+  });
+
+  it("updates take-home when a student loan plan is selected", () => {
+    render(<TakeHomeSalaryCalculator />);
+
+    // Select Plan 2
+    fireEvent.change(screen.getByLabelText("Student Loan Plan"), {
+      target: { value: "plan2" },
+    });
+
+    const table = screen.getByRole("table");
+    const breakdown = calculateTaxBreakdown(35_000, TAX_RATES_2026_2027, {
+      studentLoanPlan: "plan2",
+    });
+
+    expect(findRowCells(table, "Student Loan")[4]).toBe(
+      formatCurrency(breakdown.studentLoan),
+    );
+  });
+
+  it("shows employer match in the summary card", () => {
+    render(<TakeHomeSalaryCalculator />);
+
+    // Enter 3% employer match
+    fireEvent.change(screen.getByLabelText("Employer Match (%)"), {
+      target: { value: "3" },
+    });
+
+    const summaryHeading = screen.getByText(/Take-Home Summary/);
+    const summaryCard = summaryHeading.closest("div")!;
+    const summary = within(summaryCard);
+
+    const breakdown = calculateTaxBreakdown(35_000, TAX_RATES_2026_2027, {
+      employerPensionMatchRate: 3,
+    });
+
+    // Employer match appears in the summary card
+    expect(
+      summary.getByText(`+${formatCurrency(breakdown.employerPension)}`),
+    ).toBeInTheDocument();
+    // Total compensation = gross + employer pension
+    expect(
+      summary.getByText(
+        formatCurrency(breakdown.grossAnnual + breakdown.employerPension),
+      ),
+    ).toBeInTheDocument();
+  });
+
+  // ── URL parameter round-tripping ──
+
+  it("loads configuration from URL query params on mount", () => {
+    mockSearch.params.set("salary", "60000");
+    mockSearch.params.set("freq", "monthly");
+    mockSearch.params.set("taxYear", "2023/2024");
+    mockSearch.params.set("pension", "5");
+    mockSearch.params.set("employerMatch", "3");
+    mockSearch.params.set("studentLoan", "plan2");
+    mockSearch.params.set("hoursPerMonth", "180");
+
+    render(<TakeHomeSalaryCalculator />);
+
+    // Salary input shows monthly equivalent of £60k
+    expect(screen.getByLabelText("Monthly Salary (£)")).toHaveValue(5000);
+    // Tax year selector
+    expect(screen.getByLabelText("Tax Year")).toHaveValue("2023/2024");
+    // Pension & employer match
+    expect(screen.getByLabelText("Pension Contribution (%)")).toHaveValue(5);
+    expect(screen.getByLabelText("Employer Match (%)")).toHaveValue(3);
+    // Student loan
+    expect(screen.getByLabelText("Student Loan Plan")).toHaveValue("plan2");
+    // Working hours — expand the section to verify the URL value
+    fireEvent.click(screen.getByRole("button", { name: /Working Hours/ }));
+    expect(screen.getByDisplayValue("180")).toBeInTheDocument();
+  });
+
+  it("round-trips a fractional salary through the URL", () => {
+    mockSearch.params.set("salary", "35000.5");
+    render(<TakeHomeSalaryCalculator />);
+    // Annual display of £35,000.50 rounds to 2 dp
+    expect(screen.getByLabelText("Annual Salary (£)")).toHaveValue(35_000.5);
+  });
+
+  it("writes the configuration to the URL as inputs change", async () => {
+    render(<TakeHomeSalaryCalculator />);
+
+    fireEvent.change(screen.getByLabelText("Annual Salary (£)"), {
+      target: { value: "60000" },
+    });
+
+    await waitFor(() => {
+      expect(replaceStateSpy).toHaveBeenLastCalledWith(
+        null,
+        "",
+        expect.stringContaining("salary=60000"),
+      );
+    });
+    expect(replaceStateSpy).toHaveBeenLastCalledWith(
+      null,
+      "",
+      expect.stringContaining("/take-home-salary?"),
+    );
+  });
+
+  it("ignores invalid URL params and falls back to defaults", () => {
+    mockSearch.params.set("salary", "not-a-number");
+    mockSearch.params.set("pension", "abc");
+    mockSearch.params.set("studentLoan", "invalid-plan");
+
+    render(<TakeHomeSalaryCalculator />);
+
+    // Defaults are used
+    expect(screen.getByLabelText("Annual Salary (£)")).toHaveValue(35_000);
+    // Pension input is empty when rate is 0 (no stuck "0")
+    expect(
+      (screen.getByLabelText("Pension Contribution (%)") as HTMLInputElement).value,
+    ).toBe("");
+    expect(screen.getByLabelText("Student Loan Plan")).toHaveValue("none");
+  });
+
+  it("writes pension and student loan to the URL as inputs change", async () => {
+    render(<TakeHomeSalaryCalculator />);
+
+    fireEvent.change(screen.getByLabelText("Pension Contribution (%)"), {
+      target: { value: "7.5" },
+    });
+    fireEvent.change(screen.getByLabelText("Student Loan Plan"), {
+      target: { value: "plan2" },
+    });
+
+    await waitFor(() => {
+      expect(replaceStateSpy).toHaveBeenLastCalledWith(
+        null,
+        "",
+        expect.stringContaining("pension=7.5"),
+      );
+    });
+    await waitFor(() => {
+      expect(replaceStateSpy).toHaveBeenLastCalledWith(
+        null,
+        "",
+        expect.stringContaining("studentLoan=plan2"),
+      );
+    });
+  });
+
+  // ── Two-person comparison ──
+
+  it("shows an Add Second Person button by default", () => {
+    render(<TakeHomeSalaryCalculator />);
+    expect(
+      screen.getByRole("button", { name: /Add Second Person/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows a second person's inputs when Add Second Person is clicked", () => {
+    render(<TakeHomeSalaryCalculator />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Add Second Person/ }));
+
+    // Second person inputs appear with " — Person 2" suffix
+    expect(
+      screen.getByLabelText("Annual Salary (£) — Person 2"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Pension Contribution (%) — Person 2")).toBeInTheDocument();
+    expect(screen.getByLabelText("Employer Match (%) — Person 2")).toBeInTheDocument();
+    expect(screen.getByLabelText("Student Loan Plan — Person 2")).toBeInTheDocument();
+
+    // Two summary cards now visible
+    expect(screen.getByText(/Take-Home Summary.*Person 1/)).toBeInTheDocument();
+    expect(screen.getByText(/Take-Home Summary.*Person 2/)).toBeInTheDocument();
+
+    // Cumulative Tax Comparison table appears
+    expect(screen.getByText("Cumulative Tax Comparison")).toBeInTheDocument();
+    expect(screen.getByText("Combined")).toBeInTheDocument();
+  });
+
+  it("does not show second person inputs by default", () => {
+    render(<TakeHomeSalaryCalculator />);
+
+    expect(
+      screen.queryByLabelText("Annual Salary (£) — Person 2"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Cumulative Tax Comparison")).not.toBeInTheDocument();
+  });
+
+  it("removes second person when Remove button is clicked", () => {
+    render(<TakeHomeSalaryCalculator />);
+
+    // Add second person
+    fireEvent.click(screen.getByRole("button", { name: /Add Second Person/ }));
+    expect(screen.getByLabelText("Annual Salary (£) — Person 2")).toBeInTheDocument();
+
+    // Remove second person
+    fireEvent.click(screen.getByRole("button", { name: /Remove Second Person/ }));
+    expect(
+      screen.queryByLabelText("Annual Salary (£) — Person 2"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Cumulative Tax Comparison")).not.toBeInTheDocument();
+  });
+
+  it("calculates cumulative tax correctly for two people", () => {
+    // Person 1: £60,000 annual
+    // Person 2: £40,000 annual
+    mockSearch.params.set("people", "2");
+    mockSearch.params.set("salary", "60000");
+    mockSearch.params.set("salary2", "40000");
+    render(<TakeHomeSalaryCalculator />);
+
+    const breakdown1 = calculateTaxBreakdown(60_000, TAX_RATES_2026_2027);
+    const breakdown2 = calculateTaxBreakdown(40_000, TAX_RATES_2026_2027);
+
+    // Cumulative Tax Comparison table should show the combined values
+    const comparisonTable = screen.getByText("Cumulative Tax Comparison")
+      .closest("div")!;
+
+    // Income Tax row: combined = breakdown1 + breakdown2
+    const combinedTax = breakdown1.totalIncomeTax + breakdown2.totalIncomeTax;
+    expect(
+      within(comparisonTable).getByText(`-${formatCurrency(combinedTax)}`),
+    ).toBeInTheDocument();
+  });
+
+  it("loads second person config from URL params on mount", () => {
+    mockSearch.params.set("people", "2");
+    mockSearch.params.set("salary", "60000");
+    mockSearch.params.set("salary2", "40000");
+    mockSearch.params.set("pension2", "5");
+    mockSearch.params.set("studentLoan2", "plan2");
+
+    render(<TakeHomeSalaryCalculator />);
+
+    // Person 1 salary
+    expect(screen.getByLabelText("Annual Salary (£)")).toHaveValue(60_000);
+    // Person 2 salary
+    expect(screen.getByLabelText("Annual Salary (£) — Person 2")).toHaveValue(40_000);
+    // Person 2 pension
+    expect(
+      screen.getByLabelText("Pension Contribution (%) — Person 2"),
+    ).toHaveValue(5);
+    // Person 2 student loan
+    expect(
+      screen.getByLabelText("Student Loan Plan — Person 2"),
+    ).toHaveValue("plan2");
+  });
+
+  it("writes people=2 and person2 params to URL when second person is added", async () => {
+    render(<TakeHomeSalaryCalculator />);
+
+    // Add second person
+    fireEvent.click(screen.getByRole("button", { name: /Add Second Person/ }));
+
+    await waitFor(() => {
+      expect(replaceStateSpy).toHaveBeenLastCalledWith(
+        null,
+        "",
+        expect.stringContaining("people=2"),
+      );
+    });
+    await waitFor(() => {
+      expect(replaceStateSpy).toHaveBeenLastCalledWith(
+        null,
+        "",
+        expect.stringContaining("salary2="),
+      );
+    });
+  });
+
+  it("writes person2 params to URL when person2 inputs change", async () => {
+    mockSearch.params.set("people", "2");
+    mockSearch.params.set("salary2", "35000");
+    render(<TakeHomeSalaryCalculator />);
+
+    // Change person 2 pension
+    fireEvent.change(
+      screen.getByLabelText("Pension Contribution (%) — Person 2"),
+      { target: { value: "5" } },
+    );
+
+    await waitFor(() => {
+      expect(replaceStateSpy).toHaveBeenLastCalledWith(
+        null,
+        "",
+        expect.stringContaining("pension2=5"),
+      );
+    });
+  });
+
+  it("updates the cumulative tax comparison when person1 changes", () => {
+    mockSearch.params.set("people", "2");
+    mockSearch.params.set("salary", "60000");
+    mockSearch.params.set("salary2", "40000");
+    render(<TakeHomeSalaryCalculator />);
+
+    const bd1 = calculateTaxBreakdown(60_000, TAX_RATES_2026_2027);
+    const bd2 = calculateTaxBreakdown(40_000, TAX_RATES_2026_2027);
+    const initialCombined = bd1.totalIncomeTax + bd2.totalIncomeTax;
+
+    // Change person 1 salary to 80000
+    fireEvent.change(screen.getByLabelText("Annual Salary (£)"), {
+      target: { value: "80000" },
+    });
+
+    const bd1Updated = calculateTaxBreakdown(80_000, TAX_RATES_2026_2027);
+    const updatedCombined = bd1Updated.totalIncomeTax + bd2.totalIncomeTax;
+
+    expect(updatedCombined).not.toBe(initialCombined);
+
+    // The comparison table should show the updated combined tax
+    const comparisonTable = screen.getByText("Cumulative Tax Comparison")
+      .closest("div")!;
+    expect(
+      within(comparisonTable).getByText(`-${formatCurrency(updatedCombined)}`),
     ).toBeInTheDocument();
   });
 });
