@@ -60,7 +60,7 @@ const CLIENT_ASSERTION_TYPE =
 
 async function signClientAssertion(clientId: string, authBase: string): Promise<string> {
   const keyPath = getConfig().signingKeyPath;
-  const privateKeyPem = fs.readFileSync(keyPath, "utf-8");
+  const privateKeyPem = fs.readFileSync(keyPath, "utf-8") /*turbopackIgnore: true*/;
 
   // Parse PEM — Node.js crypto handles both SEC1 ("EC PRIVATE KEY") and PKCS#8 ("PRIVATE KEY")
   const privateKey = createPrivateKey(privateKeyPem);
@@ -97,7 +97,7 @@ export async function getAccessToken(): Promise<string> {
     // Standard OAuth2 client_credentials — confirmed by TrueLayer OpenAPI spec
     params.client_id = cfg.clientId;
     params.client_secret = cfg.clientSecret;
-  } else if (fs.existsSync(cfg.signingKeyPath)) {
+  } else if (fs.existsSync(cfg.signingKeyPath) /*turbopackIgnore: true*/) {
     // Fallback: ES512 JWT client_assertion (not currently supported by
     // sandbox auth server, but kept for production/enterprise accounts
     // that register a signing key in Console)

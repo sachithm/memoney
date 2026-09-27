@@ -29,8 +29,31 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-## Deploy on Vercel
+## Deploy on Render
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+This is a full-stack Next.js app with API routes, a PostgreSQL database, and
+OAuth/webhook integrations — it needs a Node.js server, so **GitHub Pages won't
+work**. [Render](https://render.com) is the quickest path to production.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### One-click deploy (recommended)
+
+This repo includes a `render.yaml` Blueprint. After pushing to GitHub:
+
+1. Go to [render.com](https://render.com) → **New** → **Blueprint** → select your repo.
+2. Review the proposed resources (1 web service + 1 Postgres database, both free tier).
+3. Click **Deploy Blueprint**. Render prompts you for each `sync: false` env var
+   (API keys, client secrets — see `.env.example` for the full list).
+4. After the first deploy, update `NEXTAUTH_URL` to your Render URL and register
+   the production webhook/redirect URIs in your TrueLayer, Salt Edge, and
+   Trading 212 consoles.
+
+### Manual deploy
+
+1. **Database:** New → PostgreSQL → name it `memoney-db`, plan `Free`, region `Oregon`.
+2. **Web Service:** New → Web Service → connect your repo.
+   - **Build:** `npx prisma generate --schema prisma/schema.production.prisma && npx prisma db push --schema prisma/schema.production.prisma && npm run build`
+   - **Start:** `npm start`
+3. Attach the `memoney-db` database → Render injects `DATABASE_URL`.
+4. Add env vars (see `.env.example`).
+
+See `render.yaml` for the full infrastructure definition.

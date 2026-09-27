@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import TakeHomeSalaryCalculator from "@/components/take-home-salary-calculator";
 
 export const metadata = {
@@ -7,5 +8,9 @@ export const metadata = {
 };
 
 export default function TakeHomeSalaryPage() {
-  return <TakeHomeSalaryCalculator />;
+  return (
+    <Suspense fallback={null}>
+      <TakeHomeSalaryCalculator />
+    </Suspense>
+  );
 }

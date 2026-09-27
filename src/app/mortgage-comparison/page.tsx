@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import MortgageComparisonCalculator from "@/components/mortgage-comparison-calculator";
 
 export const metadata = {
@@ -7,5 +8,9 @@ export const metadata = {
 };
 
 export default function MortgageComparisonPage() {
-  return <MortgageComparisonCalculator />;
+  return (
+    <Suspense fallback={null}>
+      <MortgageComparisonCalculator />
+    </Suspense>
+  );
 }

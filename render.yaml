@@ -1,0 +1,80 @@
+# Render infrastructure-as-code (Blueprint) configuration for memoney.
+#
+# Usage:
+#   1. Commit this file + push to GitHub.
+#   2. In the Render Dashboard: New > Blueprint > select your repo.
+#   3. Review the proposed changes, then Deploy Blueprint.
+#   4. During Blueprint creation, Render prompts you for every `sync: false`
+#      env var (API keys, client secrets, etc.).
+#   5. After the first deploy, update NEXTAUTH_URL to your actual Render URL
+#      and register webhook/redirect URIs in your provider consoles.
+#
+# See also:
+#   - .env.example  (full list of env vars and what they do)
+#   - prisma/schema.production.prisma  (Postgres-flavored Prisma schema)
+
+services:
+  - type: web
+    name: memoney
+    runtime: node
+    plan: free                              # $0/mo; bump to "starter" for 512 MB RAM
+    region: oregon                          # must match the database region below
+    buildCommand: |
+      npm install
+      # Generate the Prisma client against the Postgres schema.
+      # (dev schema uses sqlite — its adapter is incompatible with postgres.)
+      npx prisma generate --schema prisma/schema.production.prisma
+      # Create Postgres tables from the schema (no migrations needed for init).
+      npx prisma db push --schema prisma/schema.production.prisma
+      npm run build
+    startCommand: npm start                  # runs `next start` (reads $PORT)
+    envVars:
+      # ── Non-secret defaults ──────────────────────────────
+      - key: NODE_ENV
+        value: production
+      - key: NEXTAUTH_URL
+        value: https://memoney.onrender.com  # update after first deploy!
+      - key: TRUELAYER_ENV
+        value: sandbox
+      - key: TRADING212_ENV
+        value: demo
+      - key: TRADING212_ENABLED
+        value: "true"
+      - key: SALTEDGE_API_BASE
+        value: https://api.saltedge.com/api/v6
+      # ── Database (linked to the Postgres instance below) ──
+      - key: DATABASE_URL
+        fromDatabase:
+          name: memoney-db
+          property: connectionString
+      - key: SHADOW_DATABASE_URL
+        fromDatabase:
+          name: memoney-db
+          property: connectionString
+      # ── Secrets (Render prompts for these on first deploy) ──
+      - key: TRUELAYER_CLIENT_ID
+        sync: false
+      - key: TRUELAYER_CLIENT_SECRET
+        sync: false
+      - key: TRUELAYER_WEBHOOK_SECRET
+        sync: false
+      - key: TRUELAYER_REDIRECT_URI
+        sync: false              # e.g. https://memoney.onrender.com/auth/callback
+      - key: SALTEDGE_APP_ID
+        sync: false
+      - key: SALTEDGE_API_KEY
+        sync: false
+      - key: SALTEDGE_CALLBACK_URL
+        sync: false              # e.g. https://memoney.onrender.com/api/saltedge/callback
+      - key: TRADING212_API_KEY
+        sync: false
+      - key: TRADING212_API_SECRET
+        sync: false
+      # ── Optional (enterprise / self-hosted signing key) ──
+      - key: TRUELAYER_SIGNING_KEY_PATH
+        sync: false              # leave blank for sandbox (uses client_secret auth)
+
+databases:
+  - name: memoney-db
+    region: oregon
+    plan: free                  # 0.1 CPU, 256 MB RAM, 0.5 GB storage

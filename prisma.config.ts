@@ -10,5 +10,9 @@ export default defineConfig({
   },
   datasource: {
     url: process.env["DATABASE_URL"],
+    // Needed by `prisma db push` against PostgreSQL to introspect the
+    // current schema. On Render this falls back to DATABASE_URL itself
+    // (fine for an empty/fresh database). Local SQLite dev is unaffected.
+    shadowDatabaseUrl: process.env["SHADOW_DATABASE_URL"] || process.env["DATABASE_URL"],
   },
 });

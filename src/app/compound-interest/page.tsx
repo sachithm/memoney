@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import CompoundInterestCalculator from "@/components/compound-interest-calculator";
 
 export const metadata = {
@@ -7,5 +8,9 @@ export const metadata = {
 };
 
 export default function CompoundInterestPage() {
-  return <CompoundInterestCalculator />;
+  return (
+    <Suspense fallback={null}>
+      <CompoundInterestCalculator />
+    </Suspense>
+  );
 }

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import CountryComparer from "@/components/country-comparer";
 
 export const metadata = {
@@ -7,5 +8,9 @@ export const metadata = {
 };
 
 export default function CountryComparerPage() {
-  return <CountryComparer />;
+  return (
+    <Suspense fallback={null}>
+      <CountryComparer />
+    </Suspense>
+  );
 }

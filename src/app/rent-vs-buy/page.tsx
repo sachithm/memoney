@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import RentVsBuyCalculator from "@/components/rent-vs-buy-calculator";
 
 export const metadata = {
@@ -7,5 +8,9 @@ export const metadata = {
 };
 
 export default function RentVsBuyPage() {
-  return <RentVsBuyCalculator />;
+  return (
+    <Suspense fallback={null}>
+      <RentVsBuyCalculator />
+    </Suspense>
+  );
 }
