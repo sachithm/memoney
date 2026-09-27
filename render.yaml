@@ -20,7 +20,7 @@ services:
     plan: free                              # $0/mo; bump to "starter" for 512 MB RAM
     region: oregon                          # must match the database region below
     buildCommand: |
-      npm install
+      npm install --include=dev
       # Generate the Prisma client against the Postgres schema.
       # (dev schema uses sqlite — its adapter is incompatible with postgres.)
       npx prisma generate --schema prisma/schema.production.prisma
@@ -30,8 +30,9 @@ services:
     startCommand: npm start                  # runs `next start` (reads $PORT)
     envVars:
       # ── Non-secret defaults ──────────────────────────────
-      - key: NODE_ENV
-        value: production
+      # NODE_ENV is NOT set here — Render sets it to "production" at runtime,
+      # but we need devDependencies (e.g. @tailwindcss/postcss) during build,
+      # so npm install above uses --include=dev to override the default.
       - key: NEXTAUTH_URL
         value: https://memoney.onrender.com  # update after first deploy!
       - key: TRUELAYER_ENV
