@@ -30,9 +30,11 @@ services:
     startCommand: npm start                  # runs `next start` (reads $PORT)
     envVars:
       # ── Non-secret defaults ──────────────────────────────
-      # NODE_ENV is NOT set here — Render sets it to "production" at runtime,
-      # but we need devDependencies (e.g. @tailwindcss/postcss) during build,
-      # so npm install above uses --include=dev to override the default.
+      # NODE_ENV is NOT set here. Render sets it to "production" automatically.
+      # We use --include=dev above so npm installs devDependencies (e.g.
+      # @types/node, typescript) even though NODE_ENV=production.
+      # Build-critical packages like @tailwindcss/postcss are already in
+      # "dependencies" so they're always installed.
       - key: NEXTAUTH_URL
         value: https://memoney.onrender.com  # update after first deploy!
       - key: TRUELAYER_ENV
